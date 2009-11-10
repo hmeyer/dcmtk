@@ -40,7 +40,7 @@
 #include "dcmtk/dcmnet/diutil.h"
 #include "dcmtk/dcmdata/dcfilefo.h"
 #include "dcmtk/dcmqrdb/dcmqrdbs.h"
-#include "dcmtk/dcmqrdb/dcmqrdbi.h"
+#include "dcmtk/dcmqrdb/dcmqrdba.h"
 
 BEGIN_EXTERN_C
 #ifdef HAVE_FCNTL_H

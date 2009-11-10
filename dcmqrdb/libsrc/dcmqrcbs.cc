@@ -40,7 +40,7 @@
 #include "dcmtk/dcmnet/diutil.h"
 #include "dcmtk/dcmdata/dcfilefo.h"
 #include "dcmtk/dcmqrdb/dcmqrdbs.h"
-#include "dcmtk/dcmqrdb/dcmqrdbi.h"
+#include "dcmtk/dcmqrdb/dcmqrdba.h"
 
 
 void DcmQueryRetrieveStoreContext::updateDisplay(T_DIMSE_StoreProgress * progress)
