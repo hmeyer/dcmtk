@@ -36,7 +36,15 @@
 
 #include "dcmtk/dcmnet/diutil.h"
 #include "dcmtk/dcmdata/dcdeftag.h"
+
+#ifdef WITH_LUCENE
+#include "dcmtk/dcmqrdb/dcmqrdbl.h"
+#elif WITH_SQL_DATABASE
+#include "dcmtk/dcmqrdbx/dcmqrdbq.h"
+#else
 #include "dcmtk/dcmqrdb/dcmqrdbi.h"
+#endif
+
 #include "dcmtk/dcmqrdb/dcmqrdbs.h"
 #include "dcmtk/dcmdata/dcfilefo.h"
 #include "dcmtk/dcmqrdb/dcmqropt.h"

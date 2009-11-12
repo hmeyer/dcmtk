@@ -40,7 +40,15 @@
 
 #include "dcmtk/dcmnet/dicom.h"
 #include "dcmtk/dcmqrdb/dcmqrdbs.h"
+
+#ifdef WITH_LUCENE
+#include "dcmtk/dcmqrdb/dcmqrdbl.h"
+#elif WITH_SQL_DATABASE
+#include "dcmtk/dcmqrdbx/dcmqrdbq.h"
+#else
 #include "dcmtk/dcmqrdb/dcmqrdbi.h"
+#endif
+
 #include "dcmtk/dcmnet/diutil.h"
 #include "dcmtk/dcmdata/dcdebug.h"
 #include "dcmtk/dcmnet/dcompat.h"
@@ -157,11 +165,29 @@ int main (int argc, char *argv[])
 
 
     OFCondition cond;
-    DcmQueryRetrieveIndexDatabaseHandle hdl(opt_storageArea, DB_UpperMaxStudies, DB_UpperMaxBytesPerStudy, cond);
+    
+    DcmQueryRetrieveDatabaseHandle *hdlp;
+
+#ifdef WITH_LUCENE
+    // use Lucene
+    hdlp = new DcmQueryRetrieveLuceneIndexHandle(opt_storageArea, DcmQRLuceneWriter, cond);
+#elif WITH_SQL_DATABASE
+    // use SQL database
+    hdlp = new DcmQueryRetrieveSQLDatabaseHandle();
+#else
+    // use linear index database (index.dat)
+    hdlp = new DcmQueryRetrieveIndexDatabaseHandle(opt_storageArea, DB_UpperMaxStudies, DB_UpperMaxBytesPerStudy, cond);
+#endif    
+    
+//    DcmQueryRetrieveIndexDatabaseHandle hdl(opt_storageArea, DB_UpperMaxStudies, DB_UpperMaxBytesPerStudy, cond);
     if (cond.good())
     {
-        hdl.setDebugLevel(opt_debug ? 3 : 0);
-        hdl.enableQuotaSystem(OFFalse); /* disable deletion of images */
+        hdlp->setDebugLevel(opt_debug ? 3 : 0);
+#ifndef WITH_LUCENE
+#ifndef WITH_SQL_DATABASE
+        dynamic_cast<DcmQueryRetrieveIndexDatabaseHandle*>(hdlp)->enableQuotaSystem(OFFalse); /* disable deletion of images */
+#endif
+#endif
         int paramCount = cmd.getParamCount();
         for (int param = 2; param <= paramCount; param++)
         {
@@ -176,14 +202,14 @@ int main (int argc, char *argv[])
                 if (DU_findSOPClassAndInstanceInFile(opt_imageFile, sclass, sinst))
                 {
 #ifdef DEBUG
-                    if (DB_getDebugLevel() > 0)
-                    {
-                        /*** Test what filename is recommended by DB_Module **/
-                        DB_makeNewStoreFileName (hdl, sclass, sinst, fname) ;
-                        printf("DB_Module recommends %s for filename\n", fname) ;
-                    }
+//                     if (DB_getDebugLevel() > 0)
+//                     {
+//                         /*** Test what filename is recommended by DB_Module **/
+//                         DB_makeNewStoreFileName (hdl, sclass, sinst, fname) ;
+//                         printf("DB_Module recommends %s for filename\n", fname) ;
+//                     }
 #endif
-                    hdl.storeRequest(sclass, sinst, opt_imageFile, &status, opt_isNewFlag) ;
+                    hdlp->storeRequest(sclass, sinst, opt_imageFile, &status, opt_isNewFlag) ;
                 } else
                     fprintf(stderr, "%s: cannot load dicom file: %s\n", OFFIS_CONSOLE_APPLICATION, opt_imageFile);
             }
@@ -191,11 +217,19 @@ int main (int argc, char *argv[])
         if (opt_print)
         {
             printf("-- DB Index File --\n");
-            hdl.printIndexFile((char *)opt_storageArea);
+#ifdef WITH_LUCENE
+// TODO: print Index	    
+#elif WITH_SQL_DATABASE
+	    TBD
+#else
+	    dynamic_cast<DcmQueryRetrieveIndexDatabaseHandle*>(hdlp)->printIndexFile((char *)opt_storageArea);
+#endif
         }
+	delete hdlp;
         return 0;
     }
 
+    delete hdlp;
     return 1;
 }
 

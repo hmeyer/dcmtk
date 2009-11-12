@@ -29,20 +29,21 @@ dcmnetlib = -ldcmnet
 LOCALINCLUDES = $(dcmnetinc) $(dcmdatainc) $(ofstdinc)
 LIBDIRS = -L$(top_srcdir)/libsrc $(dcmnetlibdir) $(dcmdatalibdir) $(ofstdlibdir)
 LOCALLIBS = -ldcmqrdb $(dcmnetlib) $(dcmdatalib) $(ofstdlib) $(ZLIBLIBS) $(TCPWRAPPERLIBS)
+LOCALDEFS = -DWITH_LUCENE
 
 objs = dcmqrscp.o dcmqrti.o dcmqridx.o
 progs = dcmqrscp dcmqrti dcmqridx
 
 all: $(progs)
 
-dcmqrscp: dcmqrscp.o
-	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(LIBDIRS) -o $@ dcmqrscp.o $(LOCALLIBS) $(MATHLIBS) $(LIBS)
+dcmqrscp: dcmqrscp.o ../libsrc/libdcmqrdb.a
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(LOCALDEFS) $(LIBDIRS) -o $@ dcmqrscp.o $(LOCALLIBS) $(MATHLIBS) $(LIBS)
 
-dcmqrti: dcmqrti.o 
-	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(LIBDIRS) -o $@ dcmqrti.o $(LOCALLIBS) $(MATHLIBS) $(LIBS)
+dcmqrti: dcmqrti.o ../libsrc/libdcmqrdb.a
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(LOCALDEFS) $(LIBDIRS) -o $@ dcmqrti.o $(LOCALLIBS) $(MATHLIBS) $(LIBS)
 
-dcmqridx: dcmqridx.o
-	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(LIBDIRS) -o $@ dcmqridx.o $(LOCALLIBS) $(MATHLIBS) $(LIBS)
+dcmqridx: dcmqridx.o ../libsrc/libdcmqrdb.a
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(LOCALDEFS) $(LIBDIRS) -o $@ dcmqridx.o $(LOCALLIBS) $(MATHLIBS) $(LIBS)
 
 install: all
 	$(configdir)/mkinstalldirs $(bindir)

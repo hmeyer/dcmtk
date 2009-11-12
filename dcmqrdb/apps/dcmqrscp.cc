@@ -86,7 +86,9 @@ END_EXTERN_C
 #include "dcmtk/ofstd/ofconapp.h"
 #include "dcmtk/dcmdata/dcuid.h"       /* for dcmtk version name */
 
-#ifdef WITH_SQL_DATABASE
+#ifdef WITH_LUCENE
+#include "dcmtk/dcmqrdb/dcmqrdbl.h"
+#elif WITH_SQL_DATABASE
 #include "dcmtk/dcmqrdbx/dcmqrdbq.h"
 #else
 #include "dcmtk/dcmqrdb/dcmqrdbi.h"
@@ -635,7 +637,10 @@ main(int argc, char *argv[])
      }
 #endif
 
-#ifdef WITH_SQL_DATABASE
+#ifdef WITH_LUCENE
+    // use Lucene
+    DcmQueryRetrieveLuceneIndexReaderHandleFactory factory(&config);
+#elif WITH_SQL_DATABASE
     // use SQL database
     DcmQueryRetrieveSQLDatabaseHandleFactory factory;
 #else
