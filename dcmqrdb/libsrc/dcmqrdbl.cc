@@ -39,6 +39,7 @@
 #include "boost/bind.hpp"
 #include <string>
 #include <map>
+#include <list>
 #include <algorithm>
 #include <exception>
 
@@ -48,17 +49,18 @@ using namespace lucene::document;
 using namespace lucene::search;
 namespace fs =boost::filesystem;
 
-typedef std::map< DcmTagKey, LuceneSmallDcmElmt > LuceneElementMapType;
+typedef std::list< DcmTagKey > TagListType;
 typedef std::map< DcmTagKey, LuceneString > TagValueMapType;
+typedef std::map< DcmTagKey, std::string > TagStdValueMapType;
 
-struct luceneData {
+struct luceneData { // TODO: implement Singleton based IndexWriter and IndexSearcher
   Analyzer *analyzer;
   IndexWriter *indexwriter;
   IndexSearcher *indexsearcher;
   Document *imageDoc;
   Hits *findResponseHits;
   unsigned int findResponseHitCounter;
-  LuceneElementMapType findRequestMap;
+  TagListType findRequestList;
   std::string queryLevelString;
 };
 
@@ -68,8 +70,6 @@ const OFConditionConst DcmQRLuceneNoSOPIUIDErrorC(OFM_imagectn, 0x002, OF_error,
 const OFCondition DcmQRLuceneNoSOPIUIDError(DcmQRLuceneNoSOPIUIDErrorC);
 const OFConditionConst DcmQRLuceneDoubleSOPIUIDErrorC(OFM_imagectn, 0x003, OF_error, "DcmQR Lucene double DCM_SOPInstanceUID");
 const OFCondition DcmQRLuceneDoubleSOPIUIDError(DcmQRLuceneDoubleSOPIUIDErrorC);
-
-void testFindRequestList(const LuceneElementMapType &findRequestMap, Lucene_LEVEL queryLevel, Lucene_LEVEL infLevel, Lucene_LEVEL lowestLevel);
 
 
 DcmQueryRetrieveLuceneIndexHandle::DcmQueryRetrieveLuceneIndexHandle(
@@ -195,7 +195,7 @@ OFCondition DcmQueryRetrieveLuceneIndexHandle::startMoveRequest(const char* SOPC
 
 OFCondition DcmQueryRetrieveLuceneIndexHandle::cancelFindRequest(DcmQueryRetrieveDatabaseStatus* status)
 {
-  ldata->findRequestMap.clear();
+  ldata->findRequestList.clear();
   ldata->findResponseHitCounter = 0;
   if (ldata->findResponseHits) {
     delete ldata->findResponseHits;
@@ -221,8 +221,8 @@ OFCondition DcmQueryRetrieveLuceneIndexHandle::nextFindResponse(DcmDataset** fin
       Document &responseDoc = ldata->findResponseHits->doc( ldata->findResponseHitCounter++ );
       const Document::FieldsType *responseFields = responseDoc.getFields();
       
-      for( LuceneElementMapType::const_iterator i=ldata->findRequestMap.begin(); i!=ldata->findRequestMap.end(); i++) {
-	LuceneString fieldName = LuceneString(i->first);
+      for( TagListType::const_iterator i=ldata->findRequestList.begin(); i!=ldata->findRequestList.end(); i++) {
+	LuceneString fieldName = LuceneString(*i);
 	std::string responseValue;
 	for(Document::FieldsType::const_iterator fi = responseFields->begin(); fi!= responseFields->end(); fi++) {
 	  const TCHAR* fname = (*fi)->name();
@@ -230,22 +230,20 @@ OFCondition DcmQueryRetrieveLuceneIndexHandle::nextFindResponse(DcmDataset** fin
 	    responseValue = LuceneString(responseDoc.get( fname )).toStdString();
 	  }
 	}
-	DcmElement *dce = newDicomElement( i->first );
+	DcmElement *dce = newDicomElement( *i );
 	if (dce == NULL) {
 	    status->setStatus(STATUS_FIND_Refused_OutOfResources);
 	    return DcmQRLuceneIndexError;
 	}
-	if (i->second.Value.length() > 0) {
-	    OFCondition ec = dce->putString(responseValue.c_str());
-	    if (ec != EC_Normal) {
-		CERR << __FUNCTION__ << ": DB_nextFindResponse: cannot put()" << endl;
-		status->setStatus(STATUS_FIND_Failed_UnableToProcess);
-		return DcmQRLuceneIndexError;
-	    }
-	}
-	OFCondition ec = (*findResponseIdentifiers)->insert(dce, OFTrue /*replaceOld*/);
+	OFCondition ec = dce->putString(responseValue.c_str());
 	if (ec != EC_Normal) {
-	    CERR << __FUNCTION__ << ": DB_nextFindResponse: cannot insert()" << endl;
+	    CERR << __FUNCTION__ << ": cannot putString()" << endl;
+	    status->setStatus(STATUS_FIND_Failed_UnableToProcess);
+	    return DcmQRLuceneIndexError;
+	}
+	ec = (*findResponseIdentifiers)->insert(dce, OFTrue /*replaceOld*/);
+	if (ec != EC_Normal) {
+	    CERR << __FUNCTION__ << ": cannot insert()" << endl;
 	    status->setStatus(STATUS_FIND_Failed_UnableToProcess);
 	    return DcmQRLuceneIndexError;
 	}
@@ -253,7 +251,6 @@ OFCondition DcmQueryRetrieveLuceneIndexHandle::nextFindResponse(DcmDataset** fin
       DU_putStringDOElement(*findResponseIdentifiers,
 			    DCM_QueryRetrieveLevel, ldata->queryLevelString.c_str());
 			    
-    (*findResponseIdentifiers)->print( CERR );
       dbdebug(1, "%s () : STATUS_Pending\n", __FUNCTION__) ;
       status->setStatus(STATUS_Pending);
       return (EC_Normal) ;
@@ -272,8 +269,62 @@ bool DcmQueryRetrieveLuceneIndexHandle::tagSupported (DcmTagKey tag)
   return DcmQRLuceneTagKeyMap.find( tag ) != DcmQRLuceneTagKeyMap.end();
 }
 
+Query *generateQuery(const Lucene_Entry &entryData, const std::string &value) {
+  const TCHAR *fieldName = entryData.tagStr.c_str();
+  if (entryData.keyClass == Lucene_Entry::UID_CLASS 
+    || entryData.keyClass == Lucene_Entry::OTHER_CLASS) {
+    return new TermQuery( new Term( fieldName, LuceneString( value ).c_str() ) );
+  } else if (entryData.keyClass == Lucene_Entry::STRING_CLASS) {
+    std::string::size_type wildcardPos = value.find_first_of("?*");
+    if (wildcardPos == std::string::npos) { // No Wildcards used
+      return new TermQuery( new Term( fieldName, LuceneString( value ).c_str() ) );
+    } else {
+      if (wildcardPos == 0) {
+	throw std::runtime_error(std::string(__FUNCTION__) + ":leading Wildcards (as in \"" + value + "\") are not supported"); // TODO: enable leading wildcards
+      }
+      return new WildcardQuery( new Term( fieldName, LuceneString( value ).c_str() ) );
+    }
+  } else if (entryData.keyClass == Lucene_Entry::DATE_CLASS
+      || entryData.keyClass == Lucene_Entry::TIME_CLASS) {
+    std::string::size_type otherPos = value.find_first_not_of("0123456789-");
+    if (otherPos != std::string::npos) {	
+      throw std::runtime_error(std::string(__FUNCTION__) + ":Invalid Queryformat for Date or Time:" + value);
+    }
+    std::string::size_type dashPos = value.find_first_of('-');
+    if (dashPos == std::string::npos) { // No Range
+      return new TermQuery( new Term( fieldName, LuceneString( value ).c_str() ) );
+    } else if (entryData.keyClass == Lucene_Entry::DATE_CLASS) {
+      if (value.length() == 9) {
+	if (dashPos == 0) {
+	  return new RangeQuery( new Term( fieldName, LuceneString( value.substr(1) ).c_str() ), new Term( fieldName, LuceneString( "99999999" ).c_str() ), true );
+	} else if (dashPos == 8) {
+	  return new RangeQuery( new Term( fieldName, LuceneString( "00000000" ).c_str() ), new Term( fieldName, LuceneString( value.substr(0,8) ).c_str() ), true );
+	}
+      } else if (value.length() == 17 && dashPos ==8) {
+	  return new RangeQuery( new Term( fieldName, LuceneString( value.substr(0,8) ).c_str() ), new Term( fieldName, LuceneString( value.substr(9,8) ).c_str() ), true );
+      }
+      throw std::runtime_error(std::string(__FUNCTION__) + ":Date-Queries (like \"" + value + "\")not supported");
+    } else { // Time-Query
+      if (value.length() == 7) {
+	if (dashPos == 0) {
+	  return new RangeQuery( new Term( fieldName, LuceneString( value.substr(1) ).c_str() ), new Term( fieldName, LuceneString( "999999" ).c_str() ), true );
+	} else if (dashPos == 6) {
+	  return new RangeQuery( new Term( fieldName, LuceneString( "000000" ).c_str() ), new Term( fieldName, LuceneString( value.substr(0,6) ).c_str() ), true );
+	}
+      } else if (value.length() == 13 && dashPos ==6) {
+	  return new RangeQuery( new Term( fieldName, LuceneString( value.substr(0,6) ).c_str() ), new Term( fieldName, LuceneString( value.substr(7,6) ).c_str() ), true );
+      }
+      throw std::runtime_error(std::string(__FUNCTION__) + ":Time-Queries (like \"" + value + "\")not supported");  // TODO: enable RangeQueries
+    }
+  } else {
+    throw std::runtime_error(std::string(__FUNCTION__) + ":Key Class not supported");
+  }
+}
+  
+
 OFCondition DcmQueryRetrieveLuceneIndexHandle::startFindRequest(const char* SOPClassUID, DcmDataset* findRequestIdentifiers, DcmQueryRetrieveDatabaseStatus* status)
 {
+  // Find the QR-Information Model
   Lucene_QUERY_CLASS rootLevel;
   if (strcmp( SOPClassUID, UID_FINDPatientRootQueryRetrieveInformationModel) == 0)
       rootLevel = PATIENT_ROOT ;
@@ -289,128 +340,111 @@ OFCondition DcmQueryRetrieveLuceneIndexHandle::startFindRequest(const char* SOPC
       return (DcmQRLuceneIndexError) ;
   }
 
-  /**** Parse Identifiers in the Dicom Object
-  **** Find Query Level and construct a list
-  **** of query identifiers
-  ***/
-  bool qrLevelFound = false;
-  LuceneElementMapType &findRequestMap = ldata->findRequestMap;
-  findRequestMap.clear();
-  Lucene_LEVEL queryLevel = PATIENT_LEVEL;
+  // Gather all data from Request
+  TagStdValueMapType dataMap;
   int elemCount = (int)(findRequestIdentifiers->card());
   for (int elemIndex=0; elemIndex<elemCount; elemIndex++) {
-    LuceneSmallDcmElmt elem;
     DcmElement* dcelem = findRequestIdentifiers->getElement(elemIndex);
-    elem.XTag = dcelem->getTag().getXTag();
-    { 
+    DcmTagKey elementTag = dcelem->getTag().getXTag();
+    if (tagSupported(elementTag) || elementTag == DCM_QueryRetrieveLevel) {
       char *s = NULL;
       dcelem->getString(s);
-      if (s) elem.Value = s; 
-    }
-
-    /** If element is the Query Level, store it in handle
-      */
-    if (elem.XTag == DCM_QueryRetrieveLevel) {
-	// Skip this line if you want strict comparison
-	std::transform(elem.Value.begin(), elem.Value.end(), elem.Value.begin(), (int(*)(int))toupper);
-	if (PatientLevelString == elem.Value) {
-	    queryLevel = PATIENT_LEVEL ;
-	    ldata->queryLevelString = PatientLevelString;
-	}
-	else if (StudyLevelString == elem.Value) {
-	    queryLevel = STUDY_LEVEL ;
-	    ldata->queryLevelString = StudyLevelString;
-	}
-	else if (SerieLevelString == elem.Value) {
-	    queryLevel = SERIE_LEVEL ;
-	    ldata->queryLevelString = SerieLevelString;
-	}
-	else if (ImageLevelString == elem.Value) {
-	    queryLevel = IMAGE_LEVEL ;
-	    ldata->queryLevelString = ImageLevelString;
-	}
-	else {
-	    dbdebug(1, "DB_startFindRequest () : Illegal query level (%s)\n") ;
-	    status->setStatus(STATUS_FIND_Failed_UnableToProcess);
-	    return (DcmQRLuceneIndexError) ;
-	}
-	qrLevelFound = true;
-    } else if (tagSupported (elem.XTag)) {
-      findRequestMap[elem.XTag] = elem;
+      if (s==NULL) s = (char*)"";
+      dataMap.insert( TagStdValueMapType::value_type( elementTag, s ) );
+    } else {
+	dbdebug(1, "%s : unsupported Tag %s in Find-Request - dropping Tag", __FUNCTION__, elementTag.toString().c_str()) ;
     }
   }
 
-  if (!qrLevelFound) {
-      /* The Query/Retrieve Level is missing */
+  // Find the QueryLevel
+  Lucene_LEVEL queryLevel = PATIENT_LEVEL;
+  TagStdValueMapType::iterator dataMapIter = dataMap.find( DCM_QueryRetrieveLevel );
+  if (dataMapIter == dataMap.end()) {
       status->setStatus(STATUS_FIND_Failed_IdentifierDoesNotMatchSOPClass);
-      dbdebug(1,"startFindRequest(): missing Query/Retrieve Level");
-//        handle->idxCounter = -1 ;
-//        DB_FreeElementList (handle->findRequestList) ;
-//        handle->findRequestList = NULL ;
+      dbdebug(1,"%s: missing Query/Retrieve Level",__FUNCTION__);
       return (DcmQRLuceneIndexError) ;
+  } else {
+    std::string qrLevelString = dataMapIter->second;
+    // Skip this line if you want strict comparison
+    std::transform(qrLevelString.begin(), qrLevelString.end(), qrLevelString.begin(), (int(*)(int))toupper);
+    if (qrLevelString == PatientLevelString ) {
+      queryLevel = PATIENT_LEVEL; ldata->queryLevelString = PatientLevelString;
+    } else if (qrLevelString == StudyLevelString ) {
+      queryLevel = STUDY_LEVEL; ldata->queryLevelString = StudyLevelString;
+    } else if (qrLevelString == SerieLevelString ) {
+      queryLevel = SERIE_LEVEL; ldata->queryLevelString = SerieLevelString;
+    } else if (qrLevelString == ImageLevelString ) {
+      queryLevel = IMAGE_LEVEL; ldata->queryLevelString = ImageLevelString;
+    } else {
+      dbdebug(1, "%s : Illegal query level (%s)",__FUNCTION__, qrLevelString.c_str()) ;
+      status->setStatus(STATUS_FIND_Failed_UnableToProcess);
+      return (DcmQRLuceneIndexError) ;
+    }
+    dataMap.erase( dataMapIter ); // Remove the QueryLevel - since we found it
   }
-  Lucene_LEVEL qLevel = PATIENT_LEVEL;
-  Lucene_LEVEL lLevel = IMAGE_LEVEL; 
-  switch (rootLevel)
-  {
-    case PATIENT_ROOT :
-      qLevel = PATIENT_LEVEL ;
-      lLevel = IMAGE_LEVEL ;
-      break ;
-    case STUDY_ROOT :
-      qLevel = STUDY_LEVEL ;
-      lLevel = IMAGE_LEVEL ;
-      break ;
-    case PATIENT_STUDY:
-      qLevel = PATIENT_LEVEL ;
-      lLevel = STUDY_LEVEL ;
-      break ;
+
+  // Lucene Query
+  BooleanQuery boolQuery;
+  Lucene_LEVEL baseLevel = PATIENT_LEVEL;
+  if (rootLevel == STUDY_ROOT) baseLevel = STUDY_LEVEL;
+  Lucene_LEVEL maxLevel = IMAGE_LEVEL;
+  if (rootLevel == PATIENT_STUDY) maxLevel = STUDY_LEVEL;
+  if (doCheckFindIdentifier && queryLevel > maxLevel) {
+    status->setStatus(STATUS_FIND_Failed_UnableToProcess);
+    dbdebug(1, "%s : QR-Level incompatible with Information Model (level %i)",__FUNCTION__,queryLevel) ;
+    return (DcmQRLuceneIndexError) ;
+  }
+  queryLevel = std::min(maxLevel,queryLevel);
+  // add Level to Lucene Query
+  boolQuery.add( new TermQuery( new Term( FieldNameDocumentDicomLevel.c_str(), LevelStringMap.find( queryLevel)->second.c_str() ) ) , BooleanClause::MUST );
+  // add UIDs above Level to Lucene Query
+  for( int l = baseLevel; l < maxLevel; l++) {
+    dataMapIter = dataMap.find( LevelToUIDTag.find( (Lucene_LEVEL)l )->second.tag );
+    if ( dataMapIter !=  dataMap.end() && dataMapIter->second.length() > 0) {
+      const Lucene_Entry &UIDTag = LevelToUIDTag.find( (Lucene_LEVEL)l )->second;
+      TermQuery *tq = new TermQuery( new Term( UIDTag.tagStr.c_str(), LuceneString( dataMapIter->second.c_str() ).c_str() ));
+      boolQuery.add( tq, BooleanClause::MUST );
+    } 
   }
 
-  dbdebug(2,"startFindRequest(): rootLevel=%d queryLevel=%d qLevel=%d lLevel=%d", rootLevel, queryLevel, qLevel, lLevel);
-
-    /**** Test the consistency of the request list
-    ***/
-
-    if (doCheckFindIdentifier) {
-      try {
-        testFindRequestList( findRequestMap, queryLevel, qLevel, lLevel) ;
-      } catch ( std::runtime_error &e ) {
-#ifdef DEBUG
-            dbdebug(1, "DB_startFindRequest () : STATUS_FIND_Failed_IdentifierDoesNotMatchSOPClass - Invalid RequestList\n") ;
-            dbdebug(1, e.what() ) ;
-#endif
-            status->setStatus(STATUS_FIND_Failed_IdentifierDoesNotMatchSOPClass);
-            return (DcmQRLuceneIndexError) ;
+  dbdebug(3, "%s :FindRequest: Information Model:%i QueryLevel:%i",__FUNCTION__,rootLevel, queryLevel) ;
+  
+  // Iterate through Query Data and add to Lucene Query
+  ldata->findRequestList.clear();
+  for( dataMapIter = dataMap.begin(); dataMapIter != dataMap.end(); dataMapIter++) {
+    const Lucene_Entry &entryData = DcmQRLuceneTagKeyMap.find( dataMapIter->first )->second;
+    if ( entryData.level == queryLevel || (
+	entryData.level < queryLevel && entryData.level == PATIENT_LEVEL && rootLevel == STUDY_ROOT && queryLevel == STUDY_LEVEL)) {
+      if (dataMapIter->second.length() > 0) {
+	Query *query = generateQuery( entryData, dataMapIter->second );
+	boolQuery.add( query , BooleanClause::MUST );
       }
+    } else if (entryData.level < queryLevel) {
+      if (entryData.keyAttr != Lucene_Entry::UNIQUE_KEY) {
+	dbdebug(1, "%s :Non Unique Key found (level %i)",__FUNCTION__,entryData.level) ;
+	status->setStatus(STATUS_FIND_Failed_IdentifierDoesNotMatchSOPClass);
+	return (DcmQRLuceneIndexError) ;
+      }
+    } else { // entryData.level > queryLevel
+      dbdebug(1, "%s :Key (%s,level %i)found beyond query level (level %i)",__FUNCTION__,entryData.tag.toString().c_str(), entryData.level, queryLevel) ;
+      status->setStatus(STATUS_FIND_Failed_UnableToProcess);
+      return (DcmQRLuceneIndexError) ;
     }
     
-    BooleanQuery boolQuery;
-    Query *findQuery = &boolQuery;
-    int countingLevel = queryLevel;
-    while(countingLevel < qLevel) {
-      const Lucene_Entry &UIDTag = LevelToUIDTag.find( (Lucene_LEVEL)countingLevel )->second;
-      TermQuery *tq = new TermQuery( new Term( UIDTag.tagStr.c_str(), LuceneString( findRequestMap[ UIDTag.tag ].Value ).c_str() ));
-      boolQuery.add( tq, BooleanClause::MUST );
-      countingLevel++;
-    }
-    if (boolQuery.getClauseCount() == 0) { // No Restrictions - search full Index - could be optimized
-      findQuery = new WildcardQuery( new Term( LuceneString(DCM_SOPInstanceUID).c_str(), LuceneString("*").c_str()  ));
-    }
-// TODO: Match other tags!
-  dbdebug(2, "startFindRequest searching index: %s", LuceneString((const TCHAR*)findQuery->toString(NULL)).toStdString().c_str());
-
-  ldata->findResponseHitCounter = 0;
-  ldata->findResponseHits = ldata->indexsearcher->search(findQuery);
-  if (boolQuery.getClauseCount() == 0) { // delete WildcardQuery
-    delete findQuery;
+    // add to findRequestList
+    if (entryData.level <= queryLevel)
+      ldata->findRequestList.push_back( entryData.tag );
   }
+
+  dbdebug(2, "%s: searching index: %s", __FUNCTION__, LuceneString((const TCHAR*)boolQuery.toString(NULL)).toStdString().c_str());
+  ldata->findResponseHitCounter = 0;
+  ldata->findResponseHits = ldata->indexsearcher->search(&boolQuery);
 
   dbdebug(1, "startFindRequest found %i items", ldata->findResponseHits->length());
 
   if (ldata->findResponseHits->length() == 0) {
     cancelFindRequest(status);
-    dbdebug(1, "DB_startFindRequest () : STATUS_Success\n") ;
+    dbdebug(1, "%s : STATUS_Success", __FUNCTION__) ;
     status->setStatus(STATUS_Success);
     return (EC_Normal) ;
   }
@@ -418,108 +452,6 @@ OFCondition DcmQueryRetrieveLuceneIndexHandle::startFindRequest(const char* SOPC
   return (EC_Normal) ;
 }
 
-/************
-**      Test a Find Request List
-**      Returns EC_Normal if ok, else returns DcmQRLuceneIndexError
- */
-
-void testFindRequestList (
-                const LuceneElementMapType &findRequestMap,
-                Lucene_LEVEL        queryLevel,
-                Lucene_LEVEL        infLevel,
-                Lucene_LEVEL        lowestLevel
-                )
-{
-    LuceneElementMapType plist ;
-
-    /**** Query level must be at least the infLevel
-    ***/
-
-    if ( (queryLevel < infLevel) || (queryLevel > lowestLevel) ){
-	throw std::runtime_error( "Level incompatible with Information Model (level " + toString( queryLevel ) + ")" ) ;
-    }
-
-    for (int level = PATIENT_LEVEL ; level <= IMAGE_LEVEL ; ++level) {
-
-        /**** Manage exception due to StudyRoot Information Model :
-        **** In this information model, queries may include Patient attributes
-        **** but only if they are made at the study level
-        ***/
-
-        if ((level == PATIENT_LEVEL) && (infLevel == STUDY_LEVEL)) {
-            /** In Study Root Information Model, accept only Patient Tags
-            ** if the Query Level is the Study level
-            */
-
-            bool atLeastOneKeyFound = false ;
-	    for (LuceneElementMapType::const_iterator i = findRequestMap.begin(); i != findRequestMap.end() ; i++) {
-		if (LuceneSmallDcmElmtToLevel(i->second) != level) continue ;
-                atLeastOneKeyFound = true ;
-            }
-            if (atLeastOneKeyFound && (queryLevel != STUDY_LEVEL))
-	      throw std::runtime_error( "Key found in Study Root Information Model (level " + toString( level ) + ")" ) ;
-        }
-
-        /**** If current level is above the QueryLevel
-        ***/
-        else if (level < queryLevel) {
-
-            /** For this level, only unique keys are allowed
-            ** Parse the request list elements reffering to
-            ** this level.
-            ** Check that only unique key attr are provided
-            */
-
-            bool uniqueKeyFound = false;
-	    for (LuceneElementMapType::const_iterator i = findRequestMap.begin(); i != findRequestMap.end() ; i++) {
-		if (LuceneSmallDcmElmtToLevel(i->second) != level) continue ;
-		if (LuceneSmallDcmElmtToKeyType(i->second) != Lucene_Entry::UNIQUE_KEY)
-		  throw std::runtime_error( "Non Unique Key found (level " + toString( level ) + ")" ) ;
-		else if (uniqueKeyFound)
-		  throw std::runtime_error( "More than one Unique Key found (level " + toString( level ) + ")" ) ;
-		else uniqueKeyFound = true;
-            }
-        }
-
-        /**** If current level is the QueryLevel
-        ***/
-
-        else if (level == queryLevel) {
-
-            /** For this level, all keys are allowed
-            ** Parse the request list elements reffering to
-            ** this level.
-            ** Check that at least one key is provided
-            */
-
-            bool atLeastOneKeyFound = false;
-	    for (LuceneElementMapType::const_iterator i = findRequestMap.begin(); i != findRequestMap.end() ; i++) {
-		if (LuceneSmallDcmElmtToLevel(i->second) != level) continue ;
-                atLeastOneKeyFound = true;
-            }
-            if (! atLeastOneKeyFound)
-	      throw std::runtime_error( "No Key found at query level (level " + toString( level ) + ")" ) ;
-        }
-
-        /**** If current level beyond the QueryLevel
-        ***/
-
-        else if (level > queryLevel) {
-
-            /** For this level, no key is allowed
-            ** Parse the request list elements reffering to
-            ** this level.
-            ** Check that no key is provided
-            */
-
-	    for (LuceneElementMapType::const_iterator i = findRequestMap.begin(); i != findRequestMap.end() ; i++) {
-		if (LuceneSmallDcmElmtToLevel(i->second) != level) continue ;
-		throw std::runtime_error( "No Key found beyond query level (level " + toString( level ) + ")" ) ;
-            }
-        }
-
-    }
-}
 
 OFCondition DcmQueryRetrieveLuceneIndexHandle::makeNewStoreFileName(const char* SOPClassUID, const char* SOPInstanceUID, char* newImageFileName)
 {

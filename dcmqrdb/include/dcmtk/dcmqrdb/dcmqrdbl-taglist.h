@@ -17,7 +17,7 @@
 enum Lucene_QUERY_CLASS
 {
     /// patient root Q/R model
-    PATIENT_ROOT,
+    PATIENT_ROOT=1,
     /// study root Q/R model
     STUDY_ROOT,
     /// patient/study only Q/R model
@@ -29,7 +29,7 @@ enum Lucene_QUERY_CLASS
 enum Lucene_LEVEL
 {
   /// DICOM Q/R patient level
-  PATIENT_LEVEL,
+  PATIENT_LEVEL=11,
   /// DICOM Q/R study level
   STUDY_LEVEL,
   /// DICOM Q/R series level
@@ -44,7 +44,7 @@ struct Lucene_Entry
   */
   enum KEY_TYPE 
   {
-      UNIQUE_KEY,
+      UNIQUE_KEY=21,
       REQUIRED_KEY,
       OPTIONAL_KEY
   };
@@ -52,7 +52,7 @@ struct Lucene_Entry
   */
   enum KEY_CLASS
   {
-      DATE_CLASS,
+      DATE_CLASS=31,
       TIME_CLASS,
       UID_CLASS,
       STRING_CLASS,
@@ -61,7 +61,8 @@ struct Lucene_Entry
   };
   enum FIELD_TYPE
   {
-      TEXT_TYPE,
+      TEXT_TYPE=41,
+      NAME_TYPE,
       KEYWORD_TYPE,
       DATE_TYPE,
       TIME_TYPE,
@@ -95,7 +96,7 @@ const LuceneString FieldNameDicomFileName( "DicomFileName" );
 const LuceneString FieldNameDCM_SOPInstanceUID( DCM_SOPInstanceUID);
 const std::string PatientLevelString("PATIENT");
 const std::string StudyLevelString("STUDY");
-const std::string SerieLevelString("SERIE");
+const std::string SerieLevelString("SERIES");
 const std::string ImageLevelString("IMAGE");
 const std::map< Lucene_LEVEL, LuceneString > LevelStringMap = boost::assign::map_list_of( PATIENT_LEVEL, LuceneString(PatientLevelString))
   (STUDY_LEVEL, LuceneString(StudyLevelString))
@@ -104,12 +105,12 @@ const std::map< Lucene_LEVEL, LuceneString > LevelStringMap = boost::assign::map
 
 
 static DcmQRLuceneTagListType DcmQRLuceneTagList = (boost::assign::list_of(
-  Lucene_Entry( DCM_PatientsName,                          PATIENT_LEVEL,  Lucene_Entry::REQUIRED_KEY,   Lucene_Entry::STRING_CLASS, Lucene_Entry::TEXT_TYPE   ) ),
-  Lucene_Entry( DCM_OtherPatientNames,                     PATIENT_LEVEL,  Lucene_Entry::OPTIONAL_KEY,   Lucene_Entry::STRING_CLASS, Lucene_Entry::TEXT_TYPE   ),
+  Lucene_Entry( DCM_PatientsName,                          PATIENT_LEVEL,  Lucene_Entry::REQUIRED_KEY,   Lucene_Entry::STRING_CLASS, Lucene_Entry::NAME_TYPE   ) ),
+  Lucene_Entry( DCM_OtherPatientNames,                     PATIENT_LEVEL,  Lucene_Entry::OPTIONAL_KEY,   Lucene_Entry::STRING_CLASS, Lucene_Entry::NAME_TYPE   ),
   Lucene_Entry( DCM_PatientComments,                       PATIENT_LEVEL,  Lucene_Entry::OPTIONAL_KEY,   Lucene_Entry::STRING_CLASS, Lucene_Entry::TEXT_TYPE   ),
-  Lucene_Entry( DCM_ReferringPhysiciansName,               STUDY_LEVEL,    Lucene_Entry::OPTIONAL_KEY,   Lucene_Entry::STRING_CLASS, Lucene_Entry::TEXT_TYPE   ),
+  Lucene_Entry( DCM_ReferringPhysiciansName,               STUDY_LEVEL,    Lucene_Entry::OPTIONAL_KEY,   Lucene_Entry::STRING_CLASS, Lucene_Entry::NAME_TYPE   ),
   Lucene_Entry( DCM_StudyDescription,                      STUDY_LEVEL,    Lucene_Entry::OPTIONAL_KEY,   Lucene_Entry::STRING_CLASS, Lucene_Entry::TEXT_TYPE   ),
-  Lucene_Entry( DCM_NameOfPhysiciansReadingStudy,          STUDY_LEVEL,    Lucene_Entry::OPTIONAL_KEY,   Lucene_Entry::STRING_CLASS, Lucene_Entry::TEXT_TYPE   ),
+  Lucene_Entry( DCM_NameOfPhysiciansReadingStudy,          STUDY_LEVEL,    Lucene_Entry::OPTIONAL_KEY,   Lucene_Entry::STRING_CLASS, Lucene_Entry::NAME_TYPE   ),
   Lucene_Entry( DCM_AdmittingDiagnosesDescription,         STUDY_LEVEL,    Lucene_Entry::OPTIONAL_KEY,   Lucene_Entry::STRING_CLASS, Lucene_Entry::TEXT_TYPE   ),
   Lucene_Entry( DCM_Occupation,                            STUDY_LEVEL,    Lucene_Entry::OPTIONAL_KEY,   Lucene_Entry::STRING_CLASS, Lucene_Entry::TEXT_TYPE   ),
   Lucene_Entry( DCM_AdditionalPatientHistory,              STUDY_LEVEL,    Lucene_Entry::OPTIONAL_KEY,   Lucene_Entry::STRING_CLASS, Lucene_Entry::TEXT_TYPE   ),
@@ -132,14 +133,21 @@ static DcmQRLuceneTagListType DcmQRLuceneTagList = (boost::assign::list_of(
   Lucene_Entry( DCM_NumberOfPatientRelatedStudies,         PATIENT_LEVEL,  Lucene_Entry::OPTIONAL_KEY,   Lucene_Entry::STRING_CLASS, Lucene_Entry::NUMBER_TYPE ),
   Lucene_Entry( DCM_NumberOfPatientRelatedSeries,          PATIENT_LEVEL,  Lucene_Entry::OPTIONAL_KEY,   Lucene_Entry::STRING_CLASS, Lucene_Entry::NUMBER_TYPE ),
   Lucene_Entry( DCM_NumberOfPatientRelatedInstances,       PATIENT_LEVEL,  Lucene_Entry::OPTIONAL_KEY,   Lucene_Entry::STRING_CLASS, Lucene_Entry::NUMBER_TYPE ),
-  Lucene_Entry( DCM_AccessionNumber,                       STUDY_LEVEL,    Lucene_Entry::REQUIRED_KEY,   Lucene_Entry::STRING_CLASS, Lucene_Entry::NUMBER_TYPE ),
-  Lucene_Entry( DCM_OtherStudyNumbers,                     STUDY_LEVEL,    Lucene_Entry::OPTIONAL_KEY,   Lucene_Entry::OTHER_CLASS,  Lucene_Entry::NUMBER_TYPE ),
   Lucene_Entry( DCM_NumberOfStudyRelatedSeries,            STUDY_LEVEL,    Lucene_Entry::OPTIONAL_KEY,   Lucene_Entry::OTHER_CLASS,  Lucene_Entry::NUMBER_TYPE ),
   Lucene_Entry( DCM_NumberOfStudyRelatedInstances,         STUDY_LEVEL,    Lucene_Entry::OPTIONAL_KEY,   Lucene_Entry::OTHER_CLASS,  Lucene_Entry::NUMBER_TYPE ),
+  Lucene_Entry( DCM_NumberOfSeriesRelatedInstances,	   SERIE_LEVEL,    Lucene_Entry::OPTIONAL_KEY,   Lucene_Entry::OTHER_CLASS,  Lucene_Entry::NUMBER_TYPE ),
+  Lucene_Entry( DCM_SOPClassesInStudy,         		   STUDY_LEVEL,    Lucene_Entry::OPTIONAL_KEY,   Lucene_Entry::STRING_CLASS, Lucene_Entry::TEXT_TYPE   ),
+  Lucene_Entry( DCM_ModalitiesInStudy,         		   STUDY_LEVEL,    Lucene_Entry::OPTIONAL_KEY,   Lucene_Entry::STRING_CLASS, Lucene_Entry::TEXT_TYPE   ),
+  Lucene_Entry( DCM_InstitutionName,         		   STUDY_LEVEL,    Lucene_Entry::OPTIONAL_KEY,   Lucene_Entry::STRING_CLASS, Lucene_Entry::TEXT_TYPE   ),
+  Lucene_Entry( DCM_InstitutionalDepartmentName,       	   STUDY_LEVEL,    Lucene_Entry::OPTIONAL_KEY,   Lucene_Entry::STRING_CLASS, Lucene_Entry::TEXT_TYPE   ),
+  Lucene_Entry( DCM_AccessionNumber,                       STUDY_LEVEL,    Lucene_Entry::REQUIRED_KEY,   Lucene_Entry::STRING_CLASS, Lucene_Entry::NUMBER_TYPE ),
+  Lucene_Entry( DCM_OtherStudyNumbers,                     STUDY_LEVEL,    Lucene_Entry::OPTIONAL_KEY,   Lucene_Entry::OTHER_CLASS,  Lucene_Entry::NUMBER_TYPE ),
   Lucene_Entry( DCM_NumberOfFrames,                        SERIE_LEVEL,    Lucene_Entry::OPTIONAL_KEY,   Lucene_Entry::OTHER_CLASS,  Lucene_Entry::NUMBER_TYPE ),
   Lucene_Entry( DCM_NumberOfSlices,                        SERIE_LEVEL,    Lucene_Entry::OPTIONAL_KEY,   Lucene_Entry::OTHER_CLASS,  Lucene_Entry::NUMBER_TYPE ),
-  Lucene_Entry( DCM_NumberOfStudyRelatedInstances,	   STUDY_LEVEL,    Lucene_Entry::OPTIONAL_KEY,   Lucene_Entry::OTHER_CLASS,  Lucene_Entry::NUMBER_TYPE ),
-  Lucene_Entry( DCM_NumberOfSeriesRelatedInstances,	   SERIE_LEVEL,    Lucene_Entry::OPTIONAL_KEY,   Lucene_Entry::OTHER_CLASS,  Lucene_Entry::NUMBER_TYPE ),
+  Lucene_Entry( DCM_SeriesDescription,                     SERIE_LEVEL,    Lucene_Entry::OPTIONAL_KEY,   Lucene_Entry::STRING_CLASS, Lucene_Entry::TEXT_TYPE   ),
+  Lucene_Entry( DCM_SeriesNumber,                     	   SERIE_LEVEL,    Lucene_Entry::OPTIONAL_KEY,   Lucene_Entry::OTHER_CLASS,  Lucene_Entry::NUMBER_TYPE ),
+						    
+						    
   Lucene_Entry( DCM_InstanceNumber,                        IMAGE_LEVEL,    Lucene_Entry::REQUIRED_KEY,   Lucene_Entry::OTHER_CLASS,  Lucene_Entry::NUMBER_TYPE )
 );
 
