@@ -19,6 +19,7 @@
 
 #include "dcmtk/ofstd/ofstdinc.h"
 #include "dcmtk/dcmqrdb/dcmqrdba.h"    /* for class DcmQueryRetrieveDatabaseHandle */
+#include "dcmtk/dcmdata/dctagkey.h"
 #include <string>
 
 #define LUCENEPATH "lucene_index"
@@ -37,34 +38,47 @@ enum DcmQRLuceneIndexType
 class DcmQueryRetrieveLuceneIndexHandle : public DcmQueryRetrieveDatabaseHandle
 {
 public:
-    DcmQueryRetrieveLuceneIndexHandle(
-      const OFString &storageArea,
-      DcmQRLuceneIndexType indexType,
-      OFCondition& result);
-   ~DcmQueryRetrieveLuceneIndexHandle();
+  DcmQueryRetrieveLuceneIndexHandle(
+    const OFString &storageArea,
+    DcmQRLuceneIndexType indexType,
+    OFCondition& result);
+  ~DcmQueryRetrieveLuceneIndexHandle();
+  void printIndexFile(void);
+  virtual OFCondition storeRequest(const char* SOPClassUID, const char* SOPInstanceUID, const char* imageFileName, DcmQueryRetrieveDatabaseStatus* status, OFBool isNew = OFTrue);
 private:
-    virtual void setIdentifierChecking(OFBool checkFind, OFBool checkMove);
-    virtual void setDebugLevel(int debugLevel);
-    virtual OFCondition pruneInvalidRecords();
-    virtual OFCondition cancelMoveRequest(DcmQueryRetrieveDatabaseStatus* status);
-    virtual OFCondition nextMoveResponse(char* SOPClassUID, char* SOPInstanceUID, char* imageFileName, short unsigned int* numberOfRemainingSubOperations, DcmQueryRetrieveDatabaseStatus* status);
-    virtual OFCondition startMoveRequest(const char* SOPClassUID, DcmDataset* moveRequestIdentifiers, DcmQueryRetrieveDatabaseStatus* status);
-    virtual OFCondition cancelFindRequest(DcmQueryRetrieveDatabaseStatus* status);
-    virtual OFCondition nextFindResponse(DcmDataset** findResponseIdentifiers, DcmQueryRetrieveDatabaseStatus* status);
-    virtual OFCondition startFindRequest(const char* SOPClassUID, DcmDataset* findRequestIdentifiers, DcmQueryRetrieveDatabaseStatus* status);
-    virtual OFCondition storeRequest(const char* SOPClassUID, const char* SOPInstanceUID, const char* imageFileName, DcmQueryRetrieveDatabaseStatus* status, OFBool isNew = OFTrue);
-    virtual OFCondition makeNewStoreFileName(const char* SOPClassUID, const char* SOPInstanceUID, char* newImageFileName);
-    
-    OFString getIndexPath(void);
-    
-    const OFString storageArea;
-    const DcmQRLuceneIndexType indexType;
-    luceneData *ldata;
-    int debugLevel;
+  virtual void setIdentifierChecking(OFBool checkFind, OFBool checkMove);
+  virtual void setDebugLevel(int debugLevel);
+  virtual OFCondition pruneInvalidRecords();
+  virtual OFCondition cancelMoveRequest(DcmQueryRetrieveDatabaseStatus* status);
+  virtual OFCondition nextMoveResponse(char* SOPClassUID, char* SOPInstanceUID, char* imageFileName, short unsigned int* numberOfRemainingSubOperations, DcmQueryRetrieveDatabaseStatus* status);
+  virtual OFCondition startMoveRequest(const char* SOPClassUID, DcmDataset* moveRequestIdentifiers, DcmQueryRetrieveDatabaseStatus* status);
+  virtual OFCondition cancelFindRequest(DcmQueryRetrieveDatabaseStatus* status);
+  virtual OFCondition nextFindResponse(DcmDataset** findResponseIdentifiers, DcmQueryRetrieveDatabaseStatus* status);
+  virtual OFCondition startFindRequest(const char* SOPClassUID, DcmDataset* findRequestIdentifiers, DcmQueryRetrieveDatabaseStatus* status);
+  virtual OFCondition makeNewStoreFileName(const char* SOPClassUID, const char* SOPInstanceUID, char* newImageFileName);
+
+  bool tagSupported(DcmTagKey tag);
   
-    void dbdebug(int level, const char* format, ...) const;
   
+  OFString getIndexPath(void);
+  
+  const OFString storageArea;
+  const DcmQRLuceneIndexType indexType;
+  luceneData *ldata;
+
+  /// flag indicating whether or not the check function for FIND requests is enabled
+  OFBool doCheckFindIdentifier;
+
+  /// flag indicating whether or not the check function for MOVE requests is enabled
+  OFBool doCheckMoveIdentifier;
+
+  /// current debug level
+  int debugLevel;
     
+
+  void dbdebug(int level, const char* format, ...) const;
+
+  
 };
 
 /** CLucene database factory class. Instances of this class are able to create database
@@ -99,7 +113,6 @@ protected:
 
   /// pointer to system configuration
   const DcmQueryRetrieveConfig *config_;
-  
 };
 
 class DcmQueryRetrieveLuceneIndexWriterHandleFactory: public DcmQueryRetrieveLuceneIndexReaderHandleFactory
