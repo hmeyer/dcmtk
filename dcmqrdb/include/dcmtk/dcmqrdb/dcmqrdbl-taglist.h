@@ -93,15 +93,55 @@ const LuceneString ObjectStatusIsNotNew( "ObjectIsNotNew" );
 const LuceneString ObjectStatusContainsNewSubobjects( "ObjectContainsNewSubobjects" );
 const LuceneString FieldNameInstanceDescription( "InstanceDescription" );
 const LuceneString FieldNameDicomFileName( "DicomFileName" );
-const LuceneString FieldNameDCM_SOPInstanceUID( DCM_SOPInstanceUID);
+const LuceneString FieldNameDCM_SOPInstanceUID( DCM_SOPInstanceUID );
+const LuceneString FieldNameDCM_SOPClassUID( DCM_SOPClassUID );
 const std::string PatientLevelString("PATIENT");
 const std::string StudyLevelString("STUDY");
 const std::string SerieLevelString("SERIES");
 const std::string ImageLevelString("IMAGE");
-const std::map< Lucene_LEVEL, LuceneString > LevelStringMap = boost::assign::map_list_of( PATIENT_LEVEL, LuceneString(PatientLevelString))
+const std::map< Lucene_LEVEL, LuceneString > QRLevelStringMap = boost::assign::map_list_of( PATIENT_LEVEL, LuceneString(PatientLevelString))
   (STUDY_LEVEL, LuceneString(StudyLevelString))
   (SERIE_LEVEL, LuceneString(SerieLevelString))
   (IMAGE_LEVEL, LuceneString(ImageLevelString));
+  
+typedef std::map< std::string, Lucene_LEVEL >   StringQRLevelMapType;
+const StringQRLevelMapType StringQRLevelMap = boost::assign::map_list_of( PatientLevelString, PATIENT_LEVEL )
+  (StudyLevelString, STUDY_LEVEL)
+  (SerieLevelString, SERIE_LEVEL)
+  (ImageLevelString, IMAGE_LEVEL);
+  
+struct QueryInfo {
+  enum Query_Type
+  {
+      FIND=51,
+      MOVE,
+      GET
+  };
+  Lucene_QUERY_CLASS qclass;
+  Query_Type qtype;
+  QueryInfo(Lucene_QUERY_CLASS qc, Query_Type qt) 
+      : qclass(qc), qtype( qt ) { }
+};
+
+typedef std::map< std::string, QueryInfo >   StringQRClassMapType;
+const StringQRClassMapType StringQRClassMap = boost::assign::map_list_of( UID_FINDPatientRootQueryRetrieveInformationModel, QueryInfo( PATIENT_ROOT, QueryInfo::FIND ) )
+  (UID_FINDStudyRootQueryRetrieveInformationModel, QueryInfo( STUDY_ROOT, QueryInfo::FIND ))
+#ifndef NO_PATIENTSTUDYONLY_SUPPORT
+  (UID_FINDPatientStudyOnlyQueryRetrieveInformationModel, QueryInfo( PATIENT_STUDY, QueryInfo::FIND ))
+#endif
+  (UID_MOVEPatientRootQueryRetrieveInformationModel, QueryInfo( PATIENT_ROOT, QueryInfo::MOVE ))
+  (UID_MOVEStudyRootQueryRetrieveInformationModel, QueryInfo( STUDY_ROOT, QueryInfo::MOVE ))
+#ifndef NO_PATIENTSTUDYONLY_SUPPORT
+  (UID_MOVEPatientStudyOnlyQueryRetrieveInformationModel, QueryInfo( PATIENT_STUDY, QueryInfo::MOVE ))
+#endif
+#ifndef NO_GET_SUPPORT
+  (UID_GETPatientRootQueryRetrieveInformationModel, QueryInfo( PATIENT_ROOT, QueryInfo::GET ))
+  (UID_GETStudyRootQueryRetrieveInformationModel, QueryInfo( STUDY_ROOT, QueryInfo::GET ))
+#ifndef NO_PATIENTSTUDYONLY_SUPPORT
+  (UID_GETPatientStudyOnlyQueryRetrieveInformationModel, QueryInfo( PATIENT_STUDY, QueryInfo::GET ))
+#endif
+#endif
+  ;
 
 
 static DcmQRLuceneTagListType DcmQRLuceneTagList = (boost::assign::list_of(

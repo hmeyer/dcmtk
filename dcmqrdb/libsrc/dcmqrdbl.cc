@@ -52,6 +52,7 @@ namespace fs =boost::filesystem;
 typedef std::list< DcmTagKey > TagListType;
 typedef std::map< DcmTagKey, LuceneString > TagValueMapType;
 typedef std::map< DcmTagKey, std::string > TagStdValueMapType;
+typedef std::multimap< DcmTagKey, std::string > TagMultiStdValueMapType;
 
 struct luceneData { // TODO: implement Singleton based IndexWriter and IndexSearcher
   Analyzer *analyzer;
@@ -62,6 +63,8 @@ struct luceneData { // TODO: implement Singleton based IndexWriter and IndexSear
   unsigned int findResponseHitCounter;
   TagListType findRequestList;
   std::string queryLevelString;
+  Hits *moveResponseHits;
+  unsigned int moveResponseHitCounter;
 };
 
 const OFConditionConst DcmQRLuceneIndexErrorC(OFM_imagectn, 0x001, OF_error, "DcmQR Lucene Index Error");
@@ -161,6 +164,11 @@ void DcmQueryRetrieveLuceneIndexHandle::printIndexFile(void) {
   }
 }
 
+bool DcmQueryRetrieveLuceneIndexHandle::tagSupported (DcmTagKey tag)
+{
+  return DcmQRLuceneTagKeyMap.find( tag ) != DcmQRLuceneTagKeyMap.end();
+}
+
 
 void DcmQueryRetrieveLuceneIndexHandle::setIdentifierChecking(OFBool checkFind, OFBool checkMove)
 {
@@ -180,17 +188,225 @@ OFCondition DcmQueryRetrieveLuceneIndexHandle::pruneInvalidRecords()
 
 OFCondition DcmQueryRetrieveLuceneIndexHandle::cancelMoveRequest(DcmQueryRetrieveDatabaseStatus* status)
 {
-    throw std::runtime_error(std::string(__FUNCTION__) + ": not Implemented yet!");
+  ldata->moveResponseHitCounter = 0;
+  if (ldata->moveResponseHits) {
+    delete ldata->moveResponseHits;
+    ldata->moveResponseHits =  NULL;
+  }
+  status->setStatus(STATUS_MOVE_Cancel_SubOperationsTerminatedDueToCancelIndication);
+  return (EC_Normal) ;        
 }
 
 OFCondition DcmQueryRetrieveLuceneIndexHandle::nextMoveResponse(char* SOPClassUID, char* SOPInstanceUID, char* imageFileName, short unsigned int* numberOfRemainingSubOperations, DcmQueryRetrieveDatabaseStatus* status)
 {
-    throw std::runtime_error(std::string(__FUNCTION__) + ": not Implemented yet!");
+  if (ldata->moveResponseHitCounter > 0) {
+    Document &responseDoc = ldata->findResponseHits->doc( ldata->moveResponseHitCounter++ );
+    std::string SOPClassUIDString;
+    std::string SOPInstanceUIDString;
+    std::string fileNameString;
+    const TCHAR *c;
+
+    c= responseDoc.get( FieldNameDCM_SOPClassUID.c_str() );
+    if (c != NULL) SOPClassUIDString = LuceneString( c ).toStdString();
+    c= responseDoc.get( FieldNameDCM_SOPInstanceUID.c_str() );
+    if (c != NULL) SOPInstanceUIDString = LuceneString( c ).toStdString();
+    c= responseDoc.get( FieldNameDicomFileName.c_str() );
+    if (c != NULL) fileNameString = LuceneString( c ).toStdString();
+    
+    *numberOfRemainingSubOperations = ldata->moveResponseHits->length() - ldata->moveResponseHitCounter;
+    
+    strcpy (SOPClassUID, SOPClassUIDString.c_str()) ;
+    strcpy (SOPInstanceUID, SOPInstanceUIDString.c_str()) ;
+    strcpy (imageFileName, fileNameString.c_str()) ;
+
+    status->setStatus(STATUS_Pending);
+    dbdebug(1,"%s: STATUS_Pending", __FUNCTION__) ;
+    return (EC_Normal);
+  } else {
+    cancelMoveRequest(status);
+    dbdebug(1, "%s : STATUS_Success", __FUNCTION__) ;
+    status->setStatus(STATUS_Success);
+    return (EC_Normal) ;
+  }
 }
+
+  
+
+Query *generateQuery(const Lucene_Entry &entryData, const std::string &value) {
+  const TCHAR *fieldName = entryData.tagStr.c_str();
+  if (entryData.keyClass == Lucene_Entry::UID_CLASS 
+    || entryData.keyClass == Lucene_Entry::OTHER_CLASS) {
+    return new TermQuery( new Term( fieldName, LuceneString( value ).c_str() ) );
+  } else if (entryData.keyClass == Lucene_Entry::STRING_CLASS) {
+    std::string::size_type wildcardPos = value.find_first_of("?*");
+    if (wildcardPos == std::string::npos) { // No Wildcards used
+      return new TermQuery( new Term( fieldName, LuceneString( value ).c_str() ) );
+    } else {
+      if (wildcardPos == 0) {
+	throw std::runtime_error(std::string(__FUNCTION__) + ":leading Wildcards (as in \"" + value + "\") are not supported"); // TODO: enable leading wildcards
+      }
+      return new WildcardQuery( new Term( fieldName, LuceneString( value ).c_str() ) );
+    }
+  } else if (entryData.keyClass == Lucene_Entry::DATE_CLASS
+      || entryData.keyClass == Lucene_Entry::TIME_CLASS) {
+    std::string::size_type otherPos = value.find_first_not_of("0123456789-");
+    if (otherPos != std::string::npos) {	
+      throw std::runtime_error(std::string(__FUNCTION__) + ":Invalid Queryformat for Date or Time:" + value);
+    }
+    std::string::size_type dashPos = value.find_first_of('-');
+    if (dashPos == std::string::npos) { // No Range
+      return new TermQuery( new Term( fieldName, LuceneString( value ).c_str() ) );
+    } else if (entryData.keyClass == Lucene_Entry::DATE_CLASS) {
+      if (value.length() == 9) {
+	if (dashPos == 0) {
+	  return new RangeQuery( new Term( fieldName, LuceneString( value.substr(1) ).c_str() ), new Term( fieldName, LuceneString( "99999999" ).c_str() ), true );
+	} else if (dashPos == 8) {
+	  return new RangeQuery( new Term( fieldName, LuceneString( "00000000" ).c_str() ), new Term( fieldName, LuceneString( value.substr(0,8) ).c_str() ), true );
+	}
+      } else if (value.length() == 17 && dashPos ==8) {
+	  return new RangeQuery( new Term( fieldName, LuceneString( value.substr(0,8) ).c_str() ), new Term( fieldName, LuceneString( value.substr(9,8) ).c_str() ), true );
+      }
+      throw std::runtime_error(std::string(__FUNCTION__) + ":Date-Queries (like \"" + value + "\")not supported");
+    } else { // Time-Query
+      if (value.length() == 7) {
+	if (dashPos == 0) {
+	  return new RangeQuery( new Term( fieldName, LuceneString( value.substr(1) ).c_str() ), new Term( fieldName, LuceneString( "999999" ).c_str() ), true );
+	} else if (dashPos == 6) {
+	  return new RangeQuery( new Term( fieldName, LuceneString( "000000" ).c_str() ), new Term( fieldName, LuceneString( value.substr(0,6) ).c_str() ), true );
+	}
+      } else if (value.length() == 13 && dashPos ==6) {
+	  return new RangeQuery( new Term( fieldName, LuceneString( value.substr(0,6) ).c_str() ), new Term( fieldName, LuceneString( value.substr(7,6) ).c_str() ), true );
+      }
+      throw std::runtime_error(std::string(__FUNCTION__) + ":Time-Queries (like \"" + value + "\")not supported");  // TODO: enable RangeQueries
+    }
+  } else {
+    throw std::runtime_error(std::string(__FUNCTION__) + ":Key Class not supported");
+  }
+}
+  
+
 
 OFCondition DcmQueryRetrieveLuceneIndexHandle::startMoveRequest(const char* SOPClassUID, DcmDataset* moveRequestIdentifiers, DcmQueryRetrieveDatabaseStatus* status)
 {
-    throw std::runtime_error(std::string(__FUNCTION__) + ": not Implemented yet!");
+  Lucene_QUERY_CLASS rootLevel;
+  /**** Is SOPClassUID supported ?
+  ***/
+  StringQRClassMapType::const_iterator qrClassI = StringQRClassMap.find( SOPClassUID );
+  if (qrClassI != StringQRClassMap.end() && (qrClassI->second.qtype == QueryInfo::MOVE || qrClassI->second.qtype == QueryInfo::GET)) {
+    rootLevel = qrClassI->second.qclass ;
+  } else {
+    dbdebug(1, "%s: STATUS_FIND_Refused_SOPClassNotSupported", __FUNCTION__) ;
+    status->setStatus(STATUS_MOVE_Failed_SOPClassNotSupported);
+    return (DcmQRLuceneIndexError) ;
+  }
+  // Gather all data from Request
+  TagMultiStdValueMapType dataMap;
+  int elemCount = (int)(moveRequestIdentifiers->card());
+  for (int elemIndex=0; elemIndex<elemCount; elemIndex++) {
+    DcmElement* dcelem = moveRequestIdentifiers->getElement(elemIndex);
+    DcmTagKey elementTag = dcelem->getTag().getXTag();
+    if (tagSupported(elementTag) || elementTag == DCM_QueryRetrieveLevel) {
+      char *s = NULL;
+      dcelem->getString(s);
+      if (s==NULL) s = (char*)"";
+      dataMap.insert( TagStdValueMapType::value_type( elementTag, s ) );
+    } else {
+	dbdebug(1, "%s : unsupported Tag %s in Find-Request - dropping Tag", __FUNCTION__, elementTag.toString().c_str()) ;
+    }
+  }
+
+  // Find the QueryLevel
+  Lucene_LEVEL queryLevel = PATIENT_LEVEL;
+  TagMultiStdValueMapType::iterator dataMapIter = dataMap.find( DCM_QueryRetrieveLevel );
+  if (dataMapIter == dataMap.end()) {
+      status->setStatus(STATUS_FIND_Failed_IdentifierDoesNotMatchSOPClass);
+      dbdebug(1,"%s: missing Query/Retrieve Level",__FUNCTION__);
+      return (DcmQRLuceneIndexError) ;
+  } else {
+    std::string qrLevelString = dataMapIter->second;
+    // Skip this line if you want strict comparison
+    std::transform(qrLevelString.begin(), qrLevelString.end(), qrLevelString.begin(), (int(*)(int))toupper);
+    StringQRLevelMapType::const_iterator li = StringQRLevelMap.find( qrLevelString );
+    if (li != StringQRLevelMap.end()) {
+      queryLevel = li->second; ldata->queryLevelString = qrLevelString;
+    } else {
+      dbdebug(1, "%s : Illegal query level (%s)",__FUNCTION__, qrLevelString.c_str()) ;
+      status->setStatus(STATUS_MOVE_Failed_UnableToProcess);
+      return (DcmQRLuceneIndexError) ;
+    }
+    dataMap.erase( dataMapIter ); // Remove the QueryLevel - since we found it
+  }
+    
+  // Lucene Query
+  BooleanQuery baseQuery;
+  Lucene_LEVEL baseLevel = PATIENT_LEVEL;
+  if (rootLevel == STUDY_ROOT) baseLevel = STUDY_LEVEL;
+  Lucene_LEVEL maxLevel = IMAGE_LEVEL;
+  if (rootLevel == PATIENT_STUDY) maxLevel = STUDY_LEVEL;
+  if (doCheckFindIdentifier && queryLevel > maxLevel) {
+    status->setStatus(STATUS_MOVE_Failed_UnableToProcess);
+    dbdebug(1, "%s : QR-Level incompatible with Information Model (level %i)",__FUNCTION__,queryLevel) ;
+    return (DcmQRLuceneIndexError) ;
+  }
+  queryLevel = std::min(maxLevel,queryLevel);
+  
+  // add UIDs above Level to Lucene Query
+  for( int l = baseLevel; l < maxLevel; l++) {
+    dataMapIter = dataMap.find( LevelToUIDTag.find( (Lucene_LEVEL)l )->second.tag );
+    if ( dataMapIter !=  dataMap.end() && dataMapIter->second.length() > 0) {
+      const Lucene_Entry &UIDTag = LevelToUIDTag.find( (Lucene_LEVEL)l )->second;
+      TermQuery *tq = new TermQuery( new Term( UIDTag.tagStr.c_str(), LuceneString( dataMapIter->second.c_str() ).c_str() ));
+      baseQuery.add( tq, BooleanClause::MUST );
+      dataMap.erase( dataMapIter );
+    }
+  }
+  
+  dbdebug(3, "%s :MoveRequest: Information Model:%i QueryLevel:%i",__FUNCTION__,rootLevel, queryLevel) ;
+  
+  // Iterate through Query Data and add to Lucene Query
+  ldata->findRequestList.clear();
+  BooleanQuery *multiQuery = new BooleanQuery; // Query for List of IDs
+  for( dataMapIter = dataMap.begin(); dataMapIter != dataMap.end(); dataMapIter++) {
+    const Lucene_Entry &entryData = DcmQRLuceneTagKeyMap.find( dataMapIter->first )->second;
+    if ( entryData.level == queryLevel ) {
+      if (entryData.keyAttr == Lucene_Entry::UNIQUE_KEY) {
+	if (dataMapIter->second.length() > 0) {
+	  Query *query = generateQuery( entryData, dataMapIter->second );
+	  multiQuery->add( query , BooleanClause::SHOULD );
+	} else {
+	  dbdebug(1, "%s :empty unique Key found in Move-Request - ignoring",__FUNCTION__) ;
+	}
+      } else {
+	dbdebug(1, "%s :Non-unique Key found in Move-Request",__FUNCTION__) ;
+	status->setStatus(STATUS_MOVE_Failed_UnableToProcess);
+	return (DcmQRLuceneIndexError) ;
+      }
+    } else if (entryData.level < queryLevel) {
+	dbdebug(1, "%s :Multiple Unique Key found above Query Level (level %i)",__FUNCTION__,entryData.level) ;
+	status->setStatus(STATUS_MOVE_Failed_IdentifierDoesNotMatchSOPClass);
+	return (DcmQRLuceneIndexError) ;
+    } else { // entryData.level > queryLevel
+      dbdebug(1, "%s :Key (%s,level %i)found beyond query level (level %i)",__FUNCTION__,entryData.tag.toString().c_str(), entryData.level, queryLevel) ;
+      status->setStatus(STATUS_MOVE_Failed_UnableToProcess);
+      return (DcmQRLuceneIndexError) ;
+    }
+  }
+  baseQuery.add( multiQuery, BooleanClause::MUST );
+
+  dbdebug(2, "%s: searching index: %s", __FUNCTION__, LuceneString((const TCHAR*)baseQuery.toString(NULL)).toStdString().c_str());
+  ldata->moveResponseHitCounter = 0;
+  ldata->moveResponseHits = ldata->indexsearcher->search(&baseQuery);
+
+  dbdebug(1, "%s found %i items", __FUNCTION__, ldata->moveResponseHits->length());
+
+  if (ldata->moveResponseHits->length() == 0) {
+    cancelMoveRequest(status);
+    dbdebug(1, "%s : STATUS_Success", __FUNCTION__) ;
+    status->setStatus(STATUS_Success);
+    return (EC_Normal) ;
+  }
+  status->setStatus(STATUS_Pending);
+  return (EC_Normal) ;
 }
 
 OFCondition DcmQueryRetrieveLuceneIndexHandle::cancelFindRequest(DcmQueryRetrieveDatabaseStatus* status)
@@ -263,79 +479,16 @@ OFCondition DcmQueryRetrieveLuceneIndexHandle::nextFindResponse(DcmDataset** fin
     }
 }
 
-  
-bool DcmQueryRetrieveLuceneIndexHandle::tagSupported (DcmTagKey tag)
-{
-  return DcmQRLuceneTagKeyMap.find( tag ) != DcmQRLuceneTagKeyMap.end();
-}
-
-Query *generateQuery(const Lucene_Entry &entryData, const std::string &value) {
-  const TCHAR *fieldName = entryData.tagStr.c_str();
-  if (entryData.keyClass == Lucene_Entry::UID_CLASS 
-    || entryData.keyClass == Lucene_Entry::OTHER_CLASS) {
-    return new TermQuery( new Term( fieldName, LuceneString( value ).c_str() ) );
-  } else if (entryData.keyClass == Lucene_Entry::STRING_CLASS) {
-    std::string::size_type wildcardPos = value.find_first_of("?*");
-    if (wildcardPos == std::string::npos) { // No Wildcards used
-      return new TermQuery( new Term( fieldName, LuceneString( value ).c_str() ) );
-    } else {
-      if (wildcardPos == 0) {
-	throw std::runtime_error(std::string(__FUNCTION__) + ":leading Wildcards (as in \"" + value + "\") are not supported"); // TODO: enable leading wildcards
-      }
-      return new WildcardQuery( new Term( fieldName, LuceneString( value ).c_str() ) );
-    }
-  } else if (entryData.keyClass == Lucene_Entry::DATE_CLASS
-      || entryData.keyClass == Lucene_Entry::TIME_CLASS) {
-    std::string::size_type otherPos = value.find_first_not_of("0123456789-");
-    if (otherPos != std::string::npos) {	
-      throw std::runtime_error(std::string(__FUNCTION__) + ":Invalid Queryformat for Date or Time:" + value);
-    }
-    std::string::size_type dashPos = value.find_first_of('-');
-    if (dashPos == std::string::npos) { // No Range
-      return new TermQuery( new Term( fieldName, LuceneString( value ).c_str() ) );
-    } else if (entryData.keyClass == Lucene_Entry::DATE_CLASS) {
-      if (value.length() == 9) {
-	if (dashPos == 0) {
-	  return new RangeQuery( new Term( fieldName, LuceneString( value.substr(1) ).c_str() ), new Term( fieldName, LuceneString( "99999999" ).c_str() ), true );
-	} else if (dashPos == 8) {
-	  return new RangeQuery( new Term( fieldName, LuceneString( "00000000" ).c_str() ), new Term( fieldName, LuceneString( value.substr(0,8) ).c_str() ), true );
-	}
-      } else if (value.length() == 17 && dashPos ==8) {
-	  return new RangeQuery( new Term( fieldName, LuceneString( value.substr(0,8) ).c_str() ), new Term( fieldName, LuceneString( value.substr(9,8) ).c_str() ), true );
-      }
-      throw std::runtime_error(std::string(__FUNCTION__) + ":Date-Queries (like \"" + value + "\")not supported");
-    } else { // Time-Query
-      if (value.length() == 7) {
-	if (dashPos == 0) {
-	  return new RangeQuery( new Term( fieldName, LuceneString( value.substr(1) ).c_str() ), new Term( fieldName, LuceneString( "999999" ).c_str() ), true );
-	} else if (dashPos == 6) {
-	  return new RangeQuery( new Term( fieldName, LuceneString( "000000" ).c_str() ), new Term( fieldName, LuceneString( value.substr(0,6) ).c_str() ), true );
-	}
-      } else if (value.length() == 13 && dashPos ==6) {
-	  return new RangeQuery( new Term( fieldName, LuceneString( value.substr(0,6) ).c_str() ), new Term( fieldName, LuceneString( value.substr(7,6) ).c_str() ), true );
-      }
-      throw std::runtime_error(std::string(__FUNCTION__) + ":Time-Queries (like \"" + value + "\")not supported");  // TODO: enable RangeQueries
-    }
-  } else {
-    throw std::runtime_error(std::string(__FUNCTION__) + ":Key Class not supported");
-  }
-}
-  
 
 OFCondition DcmQueryRetrieveLuceneIndexHandle::startFindRequest(const char* SOPClassUID, DcmDataset* findRequestIdentifiers, DcmQueryRetrieveDatabaseStatus* status)
 {
   // Find the QR-Information Model
   Lucene_QUERY_CLASS rootLevel;
-  if (strcmp( SOPClassUID, UID_FINDPatientRootQueryRetrieveInformationModel) == 0)
-      rootLevel = PATIENT_ROOT ;
-  else if (strcmp( SOPClassUID, UID_FINDStudyRootQueryRetrieveInformationModel) == 0)
-      rootLevel = STUDY_ROOT ;
-#ifndef NO_PATIENTSTUDYONLY_SUPPORT
-  else if (strcmp( SOPClassUID, UID_FINDPatientStudyOnlyQueryRetrieveInformationModel) == 0)
-      rootLevel = PATIENT_STUDY ;
-#endif
-  else {
-      dbdebug(1, "startFindRequest: STATUS_FIND_Refused_SOPClassNotSupported") ;
+  StringQRClassMapType::const_iterator qrClassI = StringQRClassMap.find( SOPClassUID );
+  if (qrClassI != StringQRClassMap.end() && qrClassI->second.qtype == QueryInfo::FIND ) {
+    rootLevel = qrClassI->second.qclass ;
+  } else {
+      dbdebug(1, "%s: STATUS_FIND_Refused_SOPClassNotSupported", __FUNCTION__) ;
       status->setStatus(STATUS_FIND_Refused_SOPClassNotSupported);
       return (DcmQRLuceneIndexError) ;
   }
@@ -367,14 +520,9 @@ OFCondition DcmQueryRetrieveLuceneIndexHandle::startFindRequest(const char* SOPC
     std::string qrLevelString = dataMapIter->second;
     // Skip this line if you want strict comparison
     std::transform(qrLevelString.begin(), qrLevelString.end(), qrLevelString.begin(), (int(*)(int))toupper);
-    if (qrLevelString == PatientLevelString ) {
-      queryLevel = PATIENT_LEVEL; ldata->queryLevelString = PatientLevelString;
-    } else if (qrLevelString == StudyLevelString ) {
-      queryLevel = STUDY_LEVEL; ldata->queryLevelString = StudyLevelString;
-    } else if (qrLevelString == SerieLevelString ) {
-      queryLevel = SERIE_LEVEL; ldata->queryLevelString = SerieLevelString;
-    } else if (qrLevelString == ImageLevelString ) {
-      queryLevel = IMAGE_LEVEL; ldata->queryLevelString = ImageLevelString;
+    StringQRLevelMapType::const_iterator li = StringQRLevelMap.find( qrLevelString );
+    if (li != StringQRLevelMap.end()) {
+      queryLevel = li->second; ldata->queryLevelString = qrLevelString;
     } else {
       dbdebug(1, "%s : Illegal query level (%s)",__FUNCTION__, qrLevelString.c_str()) ;
       status->setStatus(STATUS_FIND_Failed_UnableToProcess);
@@ -390,13 +538,14 @@ OFCondition DcmQueryRetrieveLuceneIndexHandle::startFindRequest(const char* SOPC
   Lucene_LEVEL maxLevel = IMAGE_LEVEL;
   if (rootLevel == PATIENT_STUDY) maxLevel = STUDY_LEVEL;
   if (doCheckFindIdentifier && queryLevel > maxLevel) {
-    status->setStatus(STATUS_FIND_Failed_UnableToProcess);
+    status->setStatus(STATUS_MOVE_Failed_UnableToProcess);
     dbdebug(1, "%s : QR-Level incompatible with Information Model (level %i)",__FUNCTION__,queryLevel) ;
     return (DcmQRLuceneIndexError) ;
   }
   queryLevel = std::min(maxLevel,queryLevel);
+  
   // add Level to Lucene Query
-  boolQuery.add( new TermQuery( new Term( FieldNameDocumentDicomLevel.c_str(), LevelStringMap.find( queryLevel)->second.c_str() ) ) , BooleanClause::MUST );
+  boolQuery.add( new TermQuery( new Term( FieldNameDocumentDicomLevel.c_str(), QRLevelStringMap.find( queryLevel)->second.c_str() ) ) , BooleanClause::MUST );
   // add UIDs above Level to Lucene Query
   for( int l = baseLevel; l < maxLevel; l++) {
     dataMapIter = dataMap.find( LevelToUIDTag.find( (Lucene_LEVEL)l )->second.tag );
@@ -440,7 +589,7 @@ OFCondition DcmQueryRetrieveLuceneIndexHandle::startFindRequest(const char* SOPC
   ldata->findResponseHitCounter = 0;
   ldata->findResponseHits = ldata->indexsearcher->search(&boolQuery);
 
-  dbdebug(1, "startFindRequest found %i items", ldata->findResponseHits->length());
+  dbdebug(1, "%s found %i items", __FUNCTION__, ldata->findResponseHits->length());
 
   if (ldata->findResponseHits->length() == 0) {
     cancelFindRequest(status);
@@ -473,7 +622,7 @@ bool checkAndStoreDataForLevel( Lucene_LEVEL level, TagValueMapType &dataset, lu
   } else {
     delete hits;
     ldata->imageDoc->clear();
-    ldata->imageDoc->add( *new Field( FieldNameDocumentDicomLevel.c_str(), LevelStringMap.find( level )->second.c_str(), Field::STORE_YES| Field::INDEX_UNTOKENIZED| Field::TERMVECTOR_NO ) );
+    ldata->imageDoc->add( *new Field( FieldNameDocumentDicomLevel.c_str(), QRLevelStringMap.find( level )->second.c_str(), Field::STORE_YES| Field::INDEX_UNTOKENIZED| Field::TERMVECTOR_NO ) );
     for(TagValueMapType::const_iterator i=dataset.begin(); i != dataset.end(); i++) {
       const Lucene_Entry &tag = DcmQRLuceneTagKeyMap.find( i->first )->second;
       if (tag.level <= level) {
@@ -536,7 +685,7 @@ OFCondition DcmQueryRetrieveLuceneIndexHandle::storeRequest(const char* SOPClass
 	checkAndStoreDataForLevel( PATIENT_LEVEL, dataMap, ldata );
 
     ldata->imageDoc->clear();
-    ldata->imageDoc->add( *new Field( FieldNameDocumentDicomLevel.c_str(), LevelStringMap.find( IMAGE_LEVEL )->second.c_str(), Field::STORE_YES| Field::INDEX_UNTOKENIZED| Field::TERMVECTOR_NO ) );
+    ldata->imageDoc->add( *new Field( FieldNameDocumentDicomLevel.c_str(), QRLevelStringMap.find( IMAGE_LEVEL )->second.c_str(), Field::STORE_YES| Field::INDEX_UNTOKENIZED| Field::TERMVECTOR_NO ) );
     for(TagValueMapType::const_iterator i=dataMap.begin(); i != dataMap.end(); i++) {
       const Lucene_Entry &tag = DcmQRLuceneTagKeyMap.find( i->first )->second;
       int tokenizeFlag =  (tag.fieldType == Lucene_Entry::TEXT_TYPE) ? Field::INDEX_TOKENIZED : Field::INDEX_UNTOKENIZED;
@@ -544,6 +693,8 @@ OFCondition DcmQueryRetrieveLuceneIndexHandle::storeRequest(const char* SOPClass
     }
     ldata->imageDoc->add( *new Field( FieldNameObjectStatus.c_str(), ((isNew) ? ObjectStatusIsNew : ObjectStatusIsNotNew).c_str(), Field::STORE_YES| Field::INDEX_UNTOKENIZED| Field::TERMVECTOR_NO ) );
     ldata->imageDoc->add( *new Field( FieldNameDicomFileName.c_str(), LuceneString(imageFileName).c_str(), Field::STORE_YES| Field::INDEX_UNTOKENIZED| Field::TERMVECTOR_NO ) );
+    ldata->imageDoc->add( *new Field( FieldNameDCM_SOPClassUID.c_str(), LuceneString(SOPClassUID).c_str(), Field::STORE_YES| Field::INDEX_UNTOKENIZED| Field::TERMVECTOR_NO ) );
+    
 
     /* InstanceDescription */
     OFBool useDescrTag = OFTrue;
