@@ -74,7 +74,14 @@ const OFCondition DcmQRLuceneNoSOPIUIDError(DcmQRLuceneNoSOPIUIDErrorC);
 const OFConditionConst DcmQRLuceneDoubleSOPIUIDErrorC(OFM_imagectn, 0x003, OF_error, "DcmQR Lucene double DCM_SOPInstanceUID");
 const OFCondition DcmQRLuceneDoubleSOPIUIDError(DcmQRLuceneDoubleSOPIUIDErrorC);
 
-
+class LowerCaseAnalyzer: public Analyzer {
+public:  
+  LowerCaseAnalyzer();
+  virtual ~LowerCaseAnalyzer();
+    TokenStream* tokenStream(const TCHAR* fieldName, CL_NS(util)::Reader* reader);
+	TokenStream* reusableTokenStream(const TCHAR* fieldName, CL_NS(util)::Reader* reader);
+};
+  
 DcmQueryRetrieveLuceneIndexHandle::DcmQueryRetrieveLuceneIndexHandle(
   const OFString &storageArea,
   DcmQRLuceneIndexType indexType,
@@ -82,7 +89,7 @@ DcmQueryRetrieveLuceneIndexHandle::DcmQueryRetrieveLuceneIndexHandle(
 {
   
   ldata = new luceneData();
-  ldata->analyzer = new SimpleAnalyzer();
+  ldata->analyzer = new LowerCaseAnalyzer();
   if (indexType == DcmQRLuceneWriter) {
     ldata->imageDoc = new Document();
     bool indexExists = false;
@@ -232,52 +239,54 @@ OFCondition DcmQueryRetrieveLuceneIndexHandle::nextMoveResponse(char* SOPClassUI
 
   
 
-Query *generateQuery(const Lucene_Entry &entryData, const std::string &value) {
+Query *generateQuery(const Lucene_Entry &entryData, const std::string &svalue) {
+  LuceneString lvalue(svalue);
+  if (entryData.fieldType == Lucene_Entry::TEXT_TYPE) lvalue = lvalue.toLower();
   const TCHAR *fieldName = entryData.tagStr.c_str();
   if (entryData.keyClass == Lucene_Entry::UID_CLASS 
     || entryData.keyClass == Lucene_Entry::OTHER_CLASS) {
-    return new TermQuery( new Term( fieldName, LuceneString( value ).c_str() ) );
+    return new TermQuery( new Term( fieldName, lvalue.c_str() ) );
   } else if (entryData.keyClass == Lucene_Entry::STRING_CLASS) {
-    std::string::size_type wildcardPos = value.find_first_of("?*");
-    if (wildcardPos == std::string::npos) { // No Wildcards used
-      return new TermQuery( new Term( fieldName, LuceneString( value ).c_str() ) );
+    LuceneString::size_type wildcardPos = lvalue.find_first_of(L"?*");
+    if (wildcardPos == LuceneString::npos) { // No Wildcards used
+      return new TermQuery( new Term( fieldName, lvalue.c_str() ) );
     } else {
       if (wildcardPos == 0) {
-	throw std::runtime_error(std::string(__FUNCTION__) + ":leading Wildcards (as in \"" + value + "\") are not supported"); // TODO: enable leading wildcards
+	throw std::runtime_error(std::string(__FUNCTION__) + ":leading Wildcards (as in \"" + svalue + "\") are not supported"); // TODO: enable leading wildcards
       }
-      return new WildcardQuery( new Term( fieldName, LuceneString( value ).c_str() ) );
+      return new WildcardQuery( new Term( fieldName, lvalue.c_str() ) );
     }
   } else if (entryData.keyClass == Lucene_Entry::DATE_CLASS
       || entryData.keyClass == Lucene_Entry::TIME_CLASS) {
-    std::string::size_type otherPos = value.find_first_not_of("0123456789-");
+    LuceneString::size_type otherPos = lvalue.find_first_not_of( L"0123456789-" );
     if (otherPos != std::string::npos) {	
-      throw std::runtime_error(std::string(__FUNCTION__) + ":Invalid Queryformat for Date or Time:" + value);
+      throw std::runtime_error(std::string(__FUNCTION__) + ":Invalid Queryformat for Date or Time:" + svalue);
     }
-    std::string::size_type dashPos = value.find_first_of('-');
-    if (dashPos == std::string::npos) { // No Range
-      return new TermQuery( new Term( fieldName, LuceneString( value ).c_str() ) );
+    LuceneString::size_type dashPos = lvalue.find_first_of( L'-' );
+    if (dashPos == LuceneString::npos) { // No Range
+      return new TermQuery( new Term( fieldName, lvalue.c_str() ) );
     } else if (entryData.keyClass == Lucene_Entry::DATE_CLASS) {
-      if (value.length() == 9) {
+      if (lvalue.length() == 9) {
 	if (dashPos == 0) {
-	  return new RangeQuery( new Term( fieldName, LuceneString( value.substr(1) ).c_str() ), new Term( fieldName, LuceneString( "99999999" ).c_str() ), true );
+	  return new RangeQuery( new Term( fieldName, lvalue.substr(1).c_str()), new Term( fieldName, L"99999999" ), true );
 	} else if (dashPos == 8) {
-	  return new RangeQuery( new Term( fieldName, LuceneString( "00000000" ).c_str() ), new Term( fieldName, LuceneString( value.substr(0,8) ).c_str() ), true );
+	  return new RangeQuery( new Term( fieldName, L"00000000" ), new Term( fieldName, lvalue.substr(0,8).c_str()) , true );
 	}
-      } else if (value.length() == 17 && dashPos ==8) {
-	  return new RangeQuery( new Term( fieldName, LuceneString( value.substr(0,8) ).c_str() ), new Term( fieldName, LuceneString( value.substr(9,8) ).c_str() ), true );
+      } else if (lvalue.length() == 17 && dashPos ==8) {
+	  return new RangeQuery( new Term( fieldName, lvalue.substr(0,8).c_str() ), new Term( fieldName, lvalue.substr(9,8).c_str() ), true );
       }
-      throw std::runtime_error(std::string(__FUNCTION__) + ":Date-Queries (like \"" + value + "\")not supported");
+      throw std::runtime_error(std::string(__FUNCTION__) + ":Date-Queries (like \"" + svalue + "\")not supported");
     } else { // Time-Query
-      if (value.length() == 7) {
+      if (lvalue.length() == 7) {
 	if (dashPos == 0) {
-	  return new RangeQuery( new Term( fieldName, LuceneString( value.substr(1) ).c_str() ), new Term( fieldName, LuceneString( "999999" ).c_str() ), true );
+	  return new RangeQuery( new Term( fieldName, lvalue.substr(1).c_str() ), new Term( fieldName, L"999999" ), true );
 	} else if (dashPos == 6) {
-	  return new RangeQuery( new Term( fieldName, LuceneString( "000000" ).c_str() ), new Term( fieldName, LuceneString( value.substr(0,6) ).c_str() ), true );
+	  return new RangeQuery( new Term( fieldName, L"000000" ), new Term( fieldName, lvalue.substr(0,6).c_str() ), true );
 	}
-      } else if (value.length() == 13 && dashPos ==6) {
-	  return new RangeQuery( new Term( fieldName, LuceneString( value.substr(0,6) ).c_str() ), new Term( fieldName, LuceneString( value.substr(7,6) ).c_str() ), true );
+      } else if (lvalue.length() == 13 && dashPos ==6) {
+	  return new RangeQuery( new Term( fieldName, lvalue.substr(0,6).c_str() ), new Term( fieldName, lvalue.substr(7,6).c_str() ), true );
       }
-      throw std::runtime_error(std::string(__FUNCTION__) + ":Time-Queries (like \"" + value + "\")not supported");  // TODO: enable RangeQueries
+      throw std::runtime_error(std::string(__FUNCTION__) + ":Time-Queries (like \"" + svalue + "\")not supported");  // TODO: enable RangeQueries
     }
   } else {
     throw std::runtime_error(std::string(__FUNCTION__) + ":Key Class not supported");
@@ -638,7 +647,7 @@ bool checkAndStoreDataForLevel( Lucene_LEVEL level, TagValueMapType &dataset, lu
 
 OFCondition DcmQueryRetrieveLuceneIndexHandle::storeRequest(const char* SOPClassUID, const char* SOPInstanceUID, const char* imageFileName, DcmQueryRetrieveDatabaseStatus* status, OFBool isNew)
 {
-    dbdebug(1,"DB_storeRequest () : storage request of file : %s",imageFileName);
+    dbdebug(1,"%s: storage request of file : %s", __FUNCTION__, imageFileName);
     /**** Get IdxRec values from ImageFile
     ***/
 
@@ -652,7 +661,7 @@ OFCondition DcmQueryRetrieveLuceneIndexHandle::storeRequest(const char* SOPClass
     }
     {
       if (SOPInstanceUID == NULL) {
-	  CERR << "storeRequest():\"" << imageFileName << "\" - no DCM_SOPInstanceUID, rejecting" << endl;
+	  CERR << __FUNCTION__ << ":\"" << imageFileName << "\" - no DCM_SOPInstanceUID, rejecting" << endl;
 	  return DcmQRLuceneNoSOPIUIDError;
       }
       TermQuery tq( new Term( FieldNameDCM_SOPInstanceUID.c_str(), LuceneString( SOPInstanceUID ).c_str() ) );
@@ -819,4 +828,20 @@ DcmQueryRetrieveDatabaseHandle *DcmQueryRetrieveLuceneIndexWriterHandleFactory::
 }
 
 
-  
+
+LowerCaseAnalyzer::LowerCaseAnalyzer(){}
+LowerCaseAnalyzer::~LowerCaseAnalyzer(){}
+TokenStream* LowerCaseAnalyzer::tokenStream(const TCHAR* fieldName, CL_NS(util)::Reader* reader){
+    return new LowerCaseTokenizer(reader);
+}
+TokenStream* LowerCaseAnalyzer::reusableTokenStream(const TCHAR* fieldName, CL_NS(util)::Reader* reader)
+{
+	Tokenizer* tokenizer = static_cast<Tokenizer*>(getPreviousTokenStream());
+	if (tokenizer == NULL) {
+		tokenizer = new LowerCaseTokenizer(reader);
+		setPreviousTokenStream(tokenizer);
+	} else
+		tokenizer->reset(reader);
+	return tokenizer;
+}
+    

@@ -22,6 +22,7 @@ class LuceneString:public std::basic_string< TCHAR > {
     this->assign( istring.begin(), istring.end() );
   }
   std::string toStdString(void) const;
+  LuceneString toLower(void) const;
 //  private:
 //    std::string stdversion;
 };

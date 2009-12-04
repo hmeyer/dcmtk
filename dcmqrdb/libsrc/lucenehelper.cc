@@ -1,5 +1,6 @@
 #include "dcmtk/dcmqrdb/lucenehelper.h"
 #include <boost/lexical_cast.hpp>
+#include <algorithm>
 #include "dcmtk/dcmdata/dcdict.h"
 
 /*
@@ -17,6 +18,15 @@ LuceneString::LuceneString( DcmTagKey t ) {
 std::string LuceneString::toStdString(void) const {
   std::string out;
   out.assign( this->begin(), this->end() );
+  return out;
+}
+
+LuceneString LuceneString::toLower(void) const {
+  LuceneString out;
+  std::transform( this->begin(),
+		  this->end(), 
+		  std::back_inserter(out), 
+		  (int(*)(int))tolower);
   return out;
 }
 
