@@ -87,7 +87,6 @@ DcmQueryRetrieveLuceneIndexHandle::DcmQueryRetrieveLuceneIndexHandle(
   DcmQRLuceneIndexType indexType,
   OFCondition& result):storageArea(storageArea),indexType(indexType),doCheckFindIdentifier(OFFalse),doCheckMoveIdentifier(OFFalse),debugLevel(10)
 {
-  
   ldata = new luceneData();
   ldata->analyzer = new LowerCaseAnalyzer();
   if (indexType == DcmQRLuceneWriter) {
@@ -241,7 +240,10 @@ OFCondition DcmQueryRetrieveLuceneIndexHandle::nextMoveResponse(char* SOPClassUI
 
 Query *generateQuery(const Lucene_Entry &entryData, const std::string &svalue) {
   LuceneString lvalue(svalue);
-  if (entryData.fieldType == Lucene_Entry::TEXT_TYPE) lvalue = lvalue.toLower();
+  if (entryData.fieldType == Lucene_Entry::NAME_TYPE || entryData.fieldType == Lucene_Entry::TEXT_TYPE) lvalue = lvalue.toLower();
+  
+std::cerr << "fieldType: " << entryData.fieldType << std::endl;
+std::cerr << "value: " << lvalue.toStdString() << std::endl;
   const TCHAR *fieldName = entryData.tagStr.c_str();
   if (entryData.keyClass == Lucene_Entry::UID_CLASS 
     || entryData.keyClass == Lucene_Entry::OTHER_CLASS) {
@@ -251,9 +253,6 @@ Query *generateQuery(const Lucene_Entry &entryData, const std::string &svalue) {
     if (wildcardPos == LuceneString::npos) { // No Wildcards used
       return new TermQuery( new Term( fieldName, lvalue.c_str() ) );
     } else {
-      if (wildcardPos == 0) {
-	throw std::runtime_error(std::string(__FUNCTION__) + ":leading Wildcards (as in \"" + svalue + "\") are not supported"); // TODO: enable leading wildcards
-      }
       return new WildcardQuery( new Term( fieldName, lvalue.c_str() ) );
     }
   } else if (entryData.keyClass == Lucene_Entry::DATE_CLASS
@@ -635,7 +634,7 @@ bool checkAndStoreDataForLevel( Lucene_LEVEL level, TagValueMapType &dataset, lu
     for(TagValueMapType::const_iterator i=dataset.begin(); i != dataset.end(); i++) {
       const Lucene_Entry &tag = DcmQRLuceneTagKeyMap.find( i->first )->second;
       if (tag.level <= level) {
-	int tokenizeFlag =  (tag.fieldType == Lucene_Entry::TEXT_TYPE) ? Field::INDEX_TOKENIZED : Field::INDEX_UNTOKENIZED;
+	int tokenizeFlag =  (tag.fieldType == Lucene_Entry::NAME_TYPE || tag.fieldType == Lucene_Entry::TEXT_TYPE) ? Field::INDEX_TOKENIZED : Field::INDEX_UNTOKENIZED;
 	ldata->imageDoc->add( *new Field( DcmQRLuceneTagKeyMap.find( i->first )->second.tagStr.c_str(), i->second.c_str() , Field::STORE_YES| tokenizeFlag | Field::TERMVECTOR_NO ) );
       }
     }
@@ -697,7 +696,7 @@ OFCondition DcmQueryRetrieveLuceneIndexHandle::storeRequest(const char* SOPClass
     ldata->imageDoc->add( *new Field( FieldNameDocumentDicomLevel.c_str(), QRLevelStringMap.find( IMAGE_LEVEL )->second.c_str(), Field::STORE_YES| Field::INDEX_UNTOKENIZED| Field::TERMVECTOR_NO ) );
     for(TagValueMapType::const_iterator i=dataMap.begin(); i != dataMap.end(); i++) {
       const Lucene_Entry &tag = DcmQRLuceneTagKeyMap.find( i->first )->second;
-      int tokenizeFlag =  (tag.fieldType == Lucene_Entry::TEXT_TYPE) ? Field::INDEX_TOKENIZED : Field::INDEX_UNTOKENIZED;
+      int tokenizeFlag =  (tag.fieldType == Lucene_Entry::NAME_TYPE || tag.fieldType == Lucene_Entry::TEXT_TYPE) ? Field::INDEX_TOKENIZED : Field::INDEX_UNTOKENIZED;
       ldata->imageDoc->add( *new Field( DcmQRLuceneTagKeyMap.find( i->first )->second.tagStr.c_str(), i->second.c_str() , Field::STORE_YES| tokenizeFlag | Field::TERMVECTOR_NO ) );
     }
     ldata->imageDoc->add( *new Field( FieldNameObjectStatus.c_str(), ((isNew) ? ObjectStatusIsNew : ObjectStatusIsNotNew).c_str(), Field::STORE_YES| Field::INDEX_UNTOKENIZED| Field::TERMVECTOR_NO ) );
