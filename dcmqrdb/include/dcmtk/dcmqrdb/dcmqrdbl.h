@@ -20,12 +20,13 @@
 #include "dcmtk/ofstd/ofstdinc.h"
 #include "dcmtk/dcmqrdb/dcmqrdba.h"    /* for class DcmQueryRetrieveDatabaseHandle */
 #include "dcmtk/dcmdata/dctagkey.h"
+#include <boost/scoped_ptr.hpp>
 #include <string>
 
 #define LUCENEPATH "lucene_index"
 
 class DcmQueryRetrieveConfig;
-struct luceneData;
+class DcmQRDBLHImpl;
 
 enum DcmQRLuceneIndexType
 {
@@ -64,7 +65,6 @@ private:
   
   const OFString storageArea;
   const DcmQRLuceneIndexType indexType;
-  luceneData *ldata;
 
   /// flag indicating whether or not the check function for FIND requests is enabled
   OFBool doCheckFindIdentifier;
@@ -75,6 +75,7 @@ private:
   /// current debug level
   int debugLevel;
     
+  boost::scoped_ptr<DcmQRDBLHImpl> impl;
 
   void dbdebug(int level, const char* format, ...) const;
 

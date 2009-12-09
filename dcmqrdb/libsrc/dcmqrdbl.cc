@@ -47,6 +47,7 @@ using namespace lucene::index;
 using namespace lucene::analysis;
 using namespace lucene::document;
 using namespace lucene::search;
+using boost::scoped_ptr;
 namespace fs =boost::filesystem;
 
 typedef std::list< DcmTagKey > TagListType;
@@ -54,18 +55,6 @@ typedef std::map< DcmTagKey, LuceneString > TagValueMapType;
 typedef std::map< DcmTagKey, std::string > TagStdValueMapType;
 typedef std::multimap< DcmTagKey, std::string > TagMultiStdValueMapType;
 
-struct luceneData { // TODO: implement Singleton based IndexWriter and IndexSearcher
-  Analyzer *analyzer;
-  IndexWriter *indexwriter;
-  IndexSearcher *indexsearcher;
-  Document *imageDoc;
-  Hits *findResponseHits;
-  unsigned int findResponseHitCounter;
-  TagListType findRequestList;
-  std::string queryLevelString;
-  Hits *moveResponseHits;
-  unsigned int moveResponseHitCounter;
-};
 
 const OFConditionConst DcmQRLuceneIndexErrorC(OFM_imagectn, 0x001, OF_error, "DcmQR Lucene Index Error");
 const OFCondition DcmQRLuceneIndexError(DcmQRLuceneIndexErrorC);
@@ -81,16 +70,31 @@ public:
     TokenStream* tokenStream(const TCHAR* fieldName, CL_NS(util)::Reader* reader);
 	TokenStream* reusableTokenStream(const TCHAR* fieldName, CL_NS(util)::Reader* reader);
 };
-  
+
+class DcmQRDBLHImpl { // TODO: implement Singleton based IndexWriter and IndexSearcher
+  public:
+    DcmQRDBLHImpl():analyzer( new LowerCaseAnalyzer()),imageDoc( new Document) {};
+    bool checkAndStoreDataForLevel( Lucene_LEVEL level, TagValueMapType &dataset);
+  scoped_ptr<Analyzer> analyzer;
+  scoped_ptr<IndexWriter> indexwriter;
+  scoped_ptr<IndexSearcher> indexsearcher;
+  scoped_ptr<Document> imageDoc;
+  scoped_ptr<Hits> findResponseHits;
+  unsigned int findResponseHitCounter;
+  TagListType findRequestList;
+  std::string queryLevelString;
+  scoped_ptr<Hits> moveResponseHits;
+  unsigned int moveResponseHitCounter;
+};
+
+
 DcmQueryRetrieveLuceneIndexHandle::DcmQueryRetrieveLuceneIndexHandle(
   const OFString &storageArea,
   DcmQRLuceneIndexType indexType,
-  OFCondition& result):storageArea(storageArea),indexType(indexType),doCheckFindIdentifier(OFFalse),doCheckMoveIdentifier(OFFalse),debugLevel(10)
+  OFCondition& result):storageArea(storageArea),indexType(indexType),doCheckFindIdentifier(OFFalse),doCheckMoveIdentifier(OFFalse),debugLevel(10),
+  impl( new DcmQRDBLHImpl() )
 {
-  ldata = new luceneData();
-  ldata->analyzer = new LowerCaseAnalyzer();
   if (indexType == DcmQRLuceneWriter) {
-    ldata->imageDoc = new Document();
     bool indexExists = false;
     if ( IndexReader::indexExists( getIndexPath().c_str() ) ) {
 	//Force unlock index incase it was left locked
@@ -99,21 +103,21 @@ DcmQueryRetrieveLuceneIndexHandle::DcmQueryRetrieveLuceneIndexHandle(
 	indexExists = true;
     }
     try {
-      ldata->indexwriter = new IndexWriter( getIndexPath().c_str(),
-					    ldata->analyzer, !indexExists);
+      impl->indexwriter.reset( new IndexWriter( getIndexPath().c_str(),
+					    impl->analyzer.get(), !indexExists) );
     } catch(CLuceneError &e) {
       CERR << "Exception while creation of IndexWriter caught:" << e.what() << endl;
       result = DcmQRLuceneIndexError;
     }
     try {
-      ldata->indexsearcher = new IndexSearcher( ldata->indexwriter->getDirectory());
+      impl->indexsearcher.reset( new IndexSearcher( impl->indexwriter->getDirectory() ) );
     } catch(CLuceneError &e) {
       CERR << "Exception while creation of IndexSearcher caught:" << e.what() << endl;
       result = DcmQRLuceneIndexError;
     }
   } else if (indexType == DcmQRLuceneReader) {
     try {
-      ldata->indexsearcher = new IndexSearcher( getIndexPath().c_str());
+      impl->indexsearcher.reset( new IndexSearcher( getIndexPath().c_str()) );
     } catch(CLuceneError &e) {
       CERR << "Exception while creation of IndexSearcher caught:" << e.what() << endl;
       result = DcmQRLuceneIndexError;
@@ -123,18 +127,13 @@ DcmQueryRetrieveLuceneIndexHandle::DcmQueryRetrieveLuceneIndexHandle(
 
 DcmQueryRetrieveLuceneIndexHandle::~DcmQueryRetrieveLuceneIndexHandle() {
   if (indexType == DcmQRLuceneWriter) {
-    ldata->imageDoc->clear();
-    delete(ldata->imageDoc);
+    impl->imageDoc->clear();
   }
-  ldata->indexsearcher->close();
-  delete( ldata->indexsearcher );
+  impl->indexsearcher->close();
   if (indexType == DcmQRLuceneWriter) {
-    ldata->indexwriter->optimize();
-    ldata->indexwriter->close();
-    delete( ldata->indexwriter);
+    impl->indexwriter->optimize();
+    impl->indexwriter->close();
   }
-  delete( ldata->analyzer );
-  delete( ldata );
 }
 
 
@@ -147,25 +146,12 @@ OFString DcmQueryRetrieveLuceneIndexHandle::getIndexPath(void) {
 }
 
 void DcmQueryRetrieveLuceneIndexHandle::printIndexFile(void) {
-  IndexReader *reader = ldata->indexsearcher->getReader();
+  dbdebug(1,"%s:", __FUNCTION__) ;
+  IndexReader *reader = impl->indexsearcher->getReader();
   Document myDoc;
   for( int i = 0; i < reader->numDocs(); i++) {
     reader->document( i, myDoc, NULL );
-    const Document::FieldsType *fields = myDoc.getFields();
-    for(Document::FieldsType::const_iterator fi = fields->begin(); fi!= fields->end(); fi++) {
-      const TCHAR* fname = (*fi)->name();
-      const TCHAR* fvalue = myDoc.get( fname );
-      const LuceneString fvaluestr( fvalue );
-      if (fvaluestr.length() > 0) {
-
-	if (dcmDataDict.isDictionaryLoaded()) {
-	  
-	}
-	COUT << LuceneString( fname ).toStdString() << ":" << fvaluestr.toStdString();
-	if (fi+1!=fields->end()) COUT << "|";
-      }
-    }
-    COUT << endl;
+    COUT << LuceneString( (const TCHAR*)myDoc.toString() ).toStdString() << std::endl;
     myDoc.clear();
   }
 }
@@ -194,19 +180,16 @@ OFCondition DcmQueryRetrieveLuceneIndexHandle::pruneInvalidRecords()
 
 OFCondition DcmQueryRetrieveLuceneIndexHandle::cancelMoveRequest(DcmQueryRetrieveDatabaseStatus* status)
 {
-  ldata->moveResponseHitCounter = 0;
-  if (ldata->moveResponseHits) {
-    delete ldata->moveResponseHits;
-    ldata->moveResponseHits =  NULL;
-  }
+  impl->moveResponseHitCounter = 0;
+  impl->moveResponseHits.reset(NULL);
   status->setStatus(STATUS_MOVE_Cancel_SubOperationsTerminatedDueToCancelIndication);
   return (EC_Normal) ;        
 }
 
 OFCondition DcmQueryRetrieveLuceneIndexHandle::nextMoveResponse(char* SOPClassUID, char* SOPInstanceUID, char* imageFileName, short unsigned int* numberOfRemainingSubOperations, DcmQueryRetrieveDatabaseStatus* status)
 {
-  if (ldata->moveResponseHitCounter > 0) {
-    Document &responseDoc = ldata->findResponseHits->doc( ldata->moveResponseHitCounter++ );
+  if (impl->moveResponseHitCounter > 0) {
+    Document &responseDoc = impl->findResponseHits->doc( impl->moveResponseHitCounter++ );
     std::string SOPClassUIDString;
     std::string SOPInstanceUIDString;
     std::string fileNameString;
@@ -219,7 +202,7 @@ OFCondition DcmQueryRetrieveLuceneIndexHandle::nextMoveResponse(char* SOPClassUI
     c= responseDoc.get( FieldNameDicomFileName.c_str() );
     if (c != NULL) fileNameString = LuceneString( c ).toStdString();
     
-    *numberOfRemainingSubOperations = ldata->moveResponseHits->length() - ldata->moveResponseHitCounter;
+    *numberOfRemainingSubOperations = impl->moveResponseHits->length() - impl->moveResponseHitCounter;
     
     strcpy (SOPClassUID, SOPClassUIDString.c_str()) ;
     strcpy (SOPInstanceUID, SOPInstanceUIDString.c_str()) ;
@@ -241,9 +224,6 @@ OFCondition DcmQueryRetrieveLuceneIndexHandle::nextMoveResponse(char* SOPClassUI
 Query *generateQuery(const Lucene_Entry &entryData, const std::string &svalue) {
   LuceneString lvalue(svalue);
   if (entryData.fieldType == Lucene_Entry::NAME_TYPE || entryData.fieldType == Lucene_Entry::TEXT_TYPE) lvalue = lvalue.toLower();
-  
-std::cerr << "fieldType: " << entryData.fieldType << std::endl;
-std::cerr << "value: " << lvalue.toStdString() << std::endl;
   const TCHAR *fieldName = entryData.tagStr.c_str();
   if (entryData.keyClass == Lucene_Entry::UID_CLASS 
     || entryData.keyClass == Lucene_Entry::OTHER_CLASS) {
@@ -336,7 +316,7 @@ OFCondition DcmQueryRetrieveLuceneIndexHandle::startMoveRequest(const char* SOPC
     std::transform(qrLevelString.begin(), qrLevelString.end(), qrLevelString.begin(), (int(*)(int))toupper);
     StringQRLevelMapType::const_iterator li = StringQRLevelMap.find( qrLevelString );
     if (li != StringQRLevelMap.end()) {
-      queryLevel = li->second; ldata->queryLevelString = qrLevelString;
+      queryLevel = li->second; impl->queryLevelString = qrLevelString;
     } else {
       dbdebug(1, "%s : Illegal query level (%s)",__FUNCTION__, qrLevelString.c_str()) ;
       status->setStatus(STATUS_MOVE_Failed_UnableToProcess);
@@ -372,7 +352,7 @@ OFCondition DcmQueryRetrieveLuceneIndexHandle::startMoveRequest(const char* SOPC
   dbdebug(3, "%s :MoveRequest: Information Model:%i QueryLevel:%i",__FUNCTION__,rootLevel, queryLevel) ;
   
   // Iterate through Query Data and add to Lucene Query
-  ldata->findRequestList.clear();
+  impl->findRequestList.clear();
   BooleanQuery *multiQuery = new BooleanQuery; // Query for List of IDs
   for( dataMapIter = dataMap.begin(); dataMapIter != dataMap.end(); dataMapIter++) {
     const Lucene_Entry &entryData = DcmQRLuceneTagKeyMap.find( dataMapIter->first )->second;
@@ -402,12 +382,16 @@ OFCondition DcmQueryRetrieveLuceneIndexHandle::startMoveRequest(const char* SOPC
   baseQuery.add( multiQuery, BooleanClause::MUST );
 
   dbdebug(2, "%s: searching index: %s", __FUNCTION__, LuceneString((const TCHAR*)baseQuery.toString(NULL)).toStdString().c_str());
-  ldata->moveResponseHitCounter = 0;
-  ldata->moveResponseHits = ldata->indexsearcher->search(&baseQuery);
+  impl->moveResponseHitCounter = 0;
+// TODO: remove this dumb thing ---- snip -----  
+impl->indexwriter->flush();
+impl->indexsearcher.reset( new IndexSearcher( impl->indexwriter->getDirectory() ) );
+// TODO: remove this dumb thing ---- snap -----
+  impl->moveResponseHits.reset( impl->indexsearcher->search(&baseQuery) );
 
-  dbdebug(1, "%s found %i items", __FUNCTION__, ldata->moveResponseHits->length());
+  dbdebug(1, "%s found %i items", __FUNCTION__, impl->moveResponseHits->length());
 
-  if (ldata->moveResponseHits->length() == 0) {
+  if (impl->moveResponseHits->length() == 0) {
     cancelMoveRequest(status);
     dbdebug(1, "%s : STATUS_Success", __FUNCTION__) ;
     status->setStatus(STATUS_Success);
@@ -419,19 +403,16 @@ OFCondition DcmQueryRetrieveLuceneIndexHandle::startMoveRequest(const char* SOPC
 
 OFCondition DcmQueryRetrieveLuceneIndexHandle::cancelFindRequest(DcmQueryRetrieveDatabaseStatus* status)
 {
-  ldata->findRequestList.clear();
-  ldata->findResponseHitCounter = 0;
-  if (ldata->findResponseHits) {
-    delete ldata->findResponseHits;
-    ldata->findResponseHits =  NULL;
-  }
+  impl->findRequestList.clear();
+  impl->findResponseHitCounter = 0;
+  impl->findResponseHits.reset(NULL);
   status->setStatus(STATUS_FIND_Cancel_MatchingTerminatedDueToCancelRequest);
   return (EC_Normal) ;    
 }
 
 OFCondition DcmQueryRetrieveLuceneIndexHandle::nextFindResponse(DcmDataset** findResponseIdentifiers, DcmQueryRetrieveDatabaseStatus* status)
 {
-    dbdebug(1, "%s : about to deliver hit #%i/%i\n", __FUNCTION__, ldata->findResponseHitCounter, ldata->findResponseHits->length()) ;
+    dbdebug(1, "%s : about to deliver hit #%i/%i\n", __FUNCTION__, impl->findResponseHitCounter, impl->findResponseHits->length()) ;
     *findResponseIdentifiers = new DcmDataset ;
     if ( *findResponseIdentifiers == NULL ) {
 	dbdebug(1, "%s : could allocate ResponseIdentifiers DataSet - STATUS_FIND_Refused_OutOfResources\n", __FUNCTION__) ;
@@ -441,11 +422,18 @@ OFCondition DcmQueryRetrieveLuceneIndexHandle::nextFindResponse(DcmDataset** fin
 
     /*** Put responses
     **/
-    if (ldata->findResponseHitCounter < ldata->findResponseHits->length()) {
-      Document &responseDoc = ldata->findResponseHits->doc( ldata->findResponseHitCounter++ );
+    if (impl->findResponseHitCounter < impl->findResponseHits->length()) {
+      Document &responseDoc = impl->findResponseHits->doc( impl->findResponseHitCounter++ );
       const Document::FieldsType *responseFields = responseDoc.getFields();
+
+      dbdebug(3, "%s response:", __FUNCTION__);
+      for(Document::FieldsType::const_iterator fi = responseFields->begin(); fi!= responseFields->end(); fi++) {
+	const TCHAR* fname = (*fi)->name();
+	dbdebug(3, "%s %s: %s", __FUNCTION__, LuceneString( fname ).toStdString().c_str(), LuceneString( responseDoc.get( fname ) ).toStdString().c_str() );
+      }
       
-      for( TagListType::const_iterator i=ldata->findRequestList.begin(); i!=ldata->findRequestList.end(); i++) {
+      
+      for( TagListType::const_iterator i=impl->findRequestList.begin(); i!=impl->findRequestList.end(); i++) {
 	LuceneString fieldName = LuceneString(*i);
 	std::string responseValue;
 	for(Document::FieldsType::const_iterator fi = responseFields->begin(); fi!= responseFields->end(); fi++) {
@@ -473,7 +461,7 @@ OFCondition DcmQueryRetrieveLuceneIndexHandle::nextFindResponse(DcmDataset** fin
 	}
       }
       DU_putStringDOElement(*findResponseIdentifiers,
-			    DCM_QueryRetrieveLevel, ldata->queryLevelString.c_str());
+			    DCM_QueryRetrieveLevel, impl->queryLevelString.c_str());
 			    
       dbdebug(1, "%s () : STATUS_Pending\n", __FUNCTION__) ;
       status->setStatus(STATUS_Pending);
@@ -530,7 +518,7 @@ OFCondition DcmQueryRetrieveLuceneIndexHandle::startFindRequest(const char* SOPC
     std::transform(qrLevelString.begin(), qrLevelString.end(), qrLevelString.begin(), (int(*)(int))toupper);
     StringQRLevelMapType::const_iterator li = StringQRLevelMap.find( qrLevelString );
     if (li != StringQRLevelMap.end()) {
-      queryLevel = li->second; ldata->queryLevelString = qrLevelString;
+      queryLevel = li->second; impl->queryLevelString = qrLevelString;
     } else {
       dbdebug(1, "%s : Illegal query level (%s)",__FUNCTION__, qrLevelString.c_str()) ;
       status->setStatus(STATUS_FIND_Failed_UnableToProcess);
@@ -567,7 +555,7 @@ OFCondition DcmQueryRetrieveLuceneIndexHandle::startFindRequest(const char* SOPC
   dbdebug(3, "%s :FindRequest: Information Model:%i QueryLevel:%i",__FUNCTION__,rootLevel, queryLevel) ;
   
   // Iterate through Query Data and add to Lucene Query
-  ldata->findRequestList.clear();
+  impl->findRequestList.clear();
   for( dataMapIter = dataMap.begin(); dataMapIter != dataMap.end(); dataMapIter++) {
     const Lucene_Entry &entryData = DcmQRLuceneTagKeyMap.find( dataMapIter->first )->second;
     if ( entryData.level == queryLevel || (
@@ -587,19 +575,22 @@ OFCondition DcmQueryRetrieveLuceneIndexHandle::startFindRequest(const char* SOPC
       status->setStatus(STATUS_FIND_Failed_UnableToProcess);
       return (DcmQRLuceneIndexError) ;
     }
-    
     // add to findRequestList
     if (entryData.level <= queryLevel)
-      ldata->findRequestList.push_back( entryData.tag );
+      impl->findRequestList.push_back( entryData.tag );
   }
 
   dbdebug(2, "%s: searching index: %s", __FUNCTION__, LuceneString((const TCHAR*)boolQuery.toString(NULL)).toStdString().c_str());
-  ldata->findResponseHitCounter = 0;
-  ldata->findResponseHits = ldata->indexsearcher->search(&boolQuery);
+  impl->findResponseHitCounter = 0;
+// TODO: remove this dumb thing ---- snip -----  
+impl->indexwriter->flush();
+impl->indexsearcher.reset( new IndexSearcher( impl->indexwriter->getDirectory() ) );
+// TODO: remove this dumb thing ---- snap -----
+  impl->findResponseHits.reset( impl->indexsearcher->search(&boolQuery) );
 
-  dbdebug(1, "%s found %i items", __FUNCTION__, ldata->findResponseHits->length());
+  dbdebug(1, "%s found %i items", __FUNCTION__, impl->findResponseHits->length());
 
-  if (ldata->findResponseHits->length() == 0) {
+  if (impl->findResponseHits->length() == 0) {
     cancelFindRequest(status);
     dbdebug(1, "%s : STATUS_Success", __FUNCTION__) ;
     status->setStatus(STATUS_Success);
@@ -615,30 +606,37 @@ OFCondition DcmQueryRetrieveLuceneIndexHandle::makeNewStoreFileName(const char* 
     throw std::runtime_error(std::string(__FUNCTION__) + ": not Implemented yet!");
 }
 
-bool checkAndStoreDataForLevel( Lucene_LEVEL level, TagValueMapType &dataset, luceneData *ldata  ) { // returns true if Object already existed in level
+bool DcmQRDBLHImpl::checkAndStoreDataForLevel( Lucene_LEVEL level, TagValueMapType &dataset ) { // returns true if Object already existed in level
   LevelTagMapType::const_iterator uidTagIter = LevelToUIDTag.find( level );
   if (uidTagIter == LevelToUIDTag.end() ) std::runtime_error(std::string(__FUNCTION__) + ": level " + toString(level) +" not found!");
   const Lucene_Entry &UIDTagEntry = uidTagIter->second;
   TagValueMapType::const_iterator uidDataIter = dataset.find( UIDTagEntry.tag );
   if (uidDataIter == dataset.end() ) std::runtime_error(std::string(__FUNCTION__) + ": tag " + UIDTagEntry.tagStr.toStdString() + " not found!");
 
-  TermQuery tq( new Term( UIDTagEntry.tagStr.c_str(), uidDataIter->second.c_str() ) );
-  Hits *hits = ldata->indexsearcher->search(&tq);
+  BooleanQuery lookupQuery;
+  lookupQuery.add( new TermQuery( new Term( FieldNameDocumentDicomLevel.c_str(), QRLevelStringMap.find( level )->second.c_str() ) ), BooleanClause::MUST );
+  lookupQuery.add( new TermQuery( new Term( UIDTagEntry.tagStr.c_str(), uidDataIter->second.c_str() ) ), BooleanClause::MUST );
+
+// TODO: remove this dumb thing ---- snip -----  
+indexwriter->flush();
+indexsearcher.reset( new IndexSearcher( indexwriter->getDirectory() ) );
+// TODO: remove this dumb thing ---- snap -----
+  scoped_ptr<Hits> hits( indexsearcher->search(&lookupQuery) );
   if (hits->length()>0) {
-    delete hits;
     return true;
   } else {
-    delete hits;
-    ldata->imageDoc->clear();
-    ldata->imageDoc->add( *new Field( FieldNameDocumentDicomLevel.c_str(), QRLevelStringMap.find( level )->second.c_str(), Field::STORE_YES| Field::INDEX_UNTOKENIZED| Field::TERMVECTOR_NO ) );
+    imageDoc->clear();
+    imageDoc->add( *new Field( FieldNameDocumentDicomLevel.c_str(), QRLevelStringMap.find( level )->second.c_str(), Field::STORE_YES| Field::INDEX_UNTOKENIZED| Field::TERMVECTOR_NO ) );
     for(TagValueMapType::const_iterator i=dataset.begin(); i != dataset.end(); i++) {
-      const Lucene_Entry &tag = DcmQRLuceneTagKeyMap.find( i->first )->second;
-      if (tag.level <= level) {
-	int tokenizeFlag =  (tag.fieldType == Lucene_Entry::NAME_TYPE || tag.fieldType == Lucene_Entry::TEXT_TYPE) ? Field::INDEX_TOKENIZED : Field::INDEX_UNTOKENIZED;
-	ldata->imageDoc->add( *new Field( DcmQRLuceneTagKeyMap.find( i->first )->second.tagStr.c_str(), i->second.c_str() , Field::STORE_YES| tokenizeFlag | Field::TERMVECTOR_NO ) );
+      if (i->second.length() > 0) {
+	const Lucene_Entry &tag = DcmQRLuceneTagKeyMap.find( i->first )->second;
+	if (tag.level <= level) {
+	  int tokenizeFlag =  (tag.fieldType == Lucene_Entry::NAME_TYPE || tag.fieldType == Lucene_Entry::TEXT_TYPE) ? Field::INDEX_TOKENIZED : Field::INDEX_UNTOKENIZED;
+	  imageDoc->add( *new Field( DcmQRLuceneTagKeyMap.find( i->first )->second.tagStr.c_str(), i->second.c_str() , Field::STORE_YES| tokenizeFlag | Field::TERMVECTOR_NO ) );
+	}
       }
     }
-    ldata->indexwriter->addDocument(ldata->imageDoc);
+    indexwriter->addDocument(imageDoc.get());
     return false;
   }
 }
@@ -664,13 +662,15 @@ OFCondition DcmQueryRetrieveLuceneIndexHandle::storeRequest(const char* SOPClass
 	  return DcmQRLuceneNoSOPIUIDError;
       }
       TermQuery tq( new Term( FieldNameDCM_SOPInstanceUID.c_str(), LuceneString( SOPInstanceUID ).c_str() ) );
-      Hits *hits = ldata->indexsearcher->search(&tq);
+// TODO: remove this dumb thing ---- snip -----  
+impl->indexwriter->flush();
+impl->indexsearcher.reset( new IndexSearcher( impl->indexwriter->getDirectory() ) );
+// TODO: remove this dumb thing ---- snap -----
+      scoped_ptr<Hits> hits( impl->indexsearcher->search(&tq) );
       if (hits->length()>0) {
 	CERR << "storeRequest():\"" << imageFileName << "\" - DCM_SOPInstanceUID already exists, rejecting" << endl;
-	delete hits;
 	return DcmQRLuceneDoubleSOPIUIDError;
       }
-      delete hits;
     }
 
     DcmDataset *dset = dcmff.getDataset();
@@ -683,27 +683,26 @@ OFCondition DcmQueryRetrieveLuceneIndexHandle::storeRequest(const char* SOPClass
       const char *strPtr = NULL;
       ec = dset->findAndGetString(i->tag, strPtr);
       if ((ec != EC_Normal) || (strPtr == NULL)) {
-	  dbdebug(1,"storeRequest (): %s: value empty or not found",i->tag.toString().c_str());
+/*	  dbdebug(1,"storeRequest (): %s: value empty or not found",i->tag.toString().c_str());*/
 	  strPtr = "";
       }
       dataMap.insert( TagValueMapType::value_type( i->tag, LuceneString( strPtr ) ) );
     }
-    if (!checkAndStoreDataForLevel( SERIE_LEVEL, dataMap, ldata ))
-      if (!checkAndStoreDataForLevel( STUDY_LEVEL, dataMap, ldata ))
-	checkAndStoreDataForLevel( PATIENT_LEVEL, dataMap, ldata );
+    if (!impl->checkAndStoreDataForLevel( SERIE_LEVEL, dataMap ))
+      if (!impl->checkAndStoreDataForLevel( STUDY_LEVEL, dataMap ))
+	impl->checkAndStoreDataForLevel( PATIENT_LEVEL, dataMap );
 
-    ldata->imageDoc->clear();
-    ldata->imageDoc->add( *new Field( FieldNameDocumentDicomLevel.c_str(), QRLevelStringMap.find( IMAGE_LEVEL )->second.c_str(), Field::STORE_YES| Field::INDEX_UNTOKENIZED| Field::TERMVECTOR_NO ) );
+    impl->imageDoc->clear();
+    impl->imageDoc->add( *new Field( FieldNameDocumentDicomLevel.c_str(), QRLevelStringMap.find( IMAGE_LEVEL )->second.c_str(), Field::STORE_YES| Field::INDEX_UNTOKENIZED| Field::TERMVECTOR_NO ) );
     for(TagValueMapType::const_iterator i=dataMap.begin(); i != dataMap.end(); i++) {
       const Lucene_Entry &tag = DcmQRLuceneTagKeyMap.find( i->first )->second;
       int tokenizeFlag =  (tag.fieldType == Lucene_Entry::NAME_TYPE || tag.fieldType == Lucene_Entry::TEXT_TYPE) ? Field::INDEX_TOKENIZED : Field::INDEX_UNTOKENIZED;
-      ldata->imageDoc->add( *new Field( DcmQRLuceneTagKeyMap.find( i->first )->second.tagStr.c_str(), i->second.c_str() , Field::STORE_YES| tokenizeFlag | Field::TERMVECTOR_NO ) );
+      impl->imageDoc->add( *new Field( DcmQRLuceneTagKeyMap.find( i->first )->second.tagStr.c_str(), i->second.c_str() , Field::STORE_YES| tokenizeFlag | Field::TERMVECTOR_NO ) );
     }
-    ldata->imageDoc->add( *new Field( FieldNameObjectStatus.c_str(), ((isNew) ? ObjectStatusIsNew : ObjectStatusIsNotNew).c_str(), Field::STORE_YES| Field::INDEX_UNTOKENIZED| Field::TERMVECTOR_NO ) );
-    ldata->imageDoc->add( *new Field( FieldNameDicomFileName.c_str(), LuceneString(imageFileName).c_str(), Field::STORE_YES| Field::INDEX_UNTOKENIZED| Field::TERMVECTOR_NO ) );
-    ldata->imageDoc->add( *new Field( FieldNameDCM_SOPClassUID.c_str(), LuceneString(SOPClassUID).c_str(), Field::STORE_YES| Field::INDEX_UNTOKENIZED| Field::TERMVECTOR_NO ) );
+    impl->imageDoc->add( *new Field( FieldNameObjectStatus.c_str(), ((isNew) ? ObjectStatusIsNew : ObjectStatusIsNotNew).c_str(), Field::STORE_YES| Field::INDEX_UNTOKENIZED| Field::TERMVECTOR_NO ) );
+    impl->imageDoc->add( *new Field( FieldNameDicomFileName.c_str(), LuceneString(imageFileName).c_str(), Field::STORE_YES| Field::INDEX_UNTOKENIZED| Field::TERMVECTOR_NO ) );
+    impl->imageDoc->add( *new Field( FieldNameDCM_SOPClassUID.c_str(), LuceneString(SOPClassUID).c_str(), Field::STORE_YES| Field::INDEX_UNTOKENIZED| Field::TERMVECTOR_NO ) );
     
-
     /* InstanceDescription */
     OFBool useDescrTag = OFTrue;
     DcmTagKey descrTag = DCM_ImageComments;
@@ -770,9 +769,9 @@ OFCondition DcmQueryRetrieveLuceneIndexHandle::storeRequest(const char* SOPClass
 		    description += LuceneString("Signed Instance");
             }
         }
-    ldata->imageDoc->add( *new Field( FieldNameInstanceDescription.c_str(), description.c_str(), Field::STORE_YES| Field::INDEX_TOKENIZED| Field::TERMVECTOR_NO ) );
-    ldata->indexwriter->addDocument(ldata->imageDoc);
-    ldata->imageDoc->clear();
+    impl->imageDoc->add( *new Field( FieldNameInstanceDescription.c_str(), description.c_str(), Field::STORE_YES| Field::INDEX_TOKENIZED| Field::TERMVECTOR_NO ) );
+    impl->indexwriter->addDocument(impl->imageDoc.get());
+    impl->imageDoc->clear();
     return EC_Normal;
 }
 
