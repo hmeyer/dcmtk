@@ -1,4 +1,5 @@
 #include "dcmtk/dcmqrdb/lucenehelper.h"
+#include "dcmtk/dcmqrdb/dcmqrdbl-taglist.h"
 #include <boost/lexical_cast.hpp>
 #include <algorithm>
 #include "dcmtk/dcmdata/dcdict.h"
@@ -28,6 +29,14 @@ LuceneString LuceneString::toLower(void) const {
 		  std::back_inserter(out), 
 		  (int(*)(int))tolower);
   return out;
+}
+
+Lucene_LEVEL LuceneSmallDcmElmtToLevel(const LuceneSmallDcmElmt &e) {
+  return DcmQRLuceneTagKeyMap.find(e.XTag)->second.level;
+}
+
+Lucene_Entry::KEY_TYPE LuceneSmallDcmElmtToKeyType(const LuceneSmallDcmElmt &e) {
+  return DcmQRLuceneTagKeyMap.find(e.XTag)->second.keyAttr;
 }
 
 

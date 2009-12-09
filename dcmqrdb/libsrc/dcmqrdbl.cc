@@ -14,136 +14,61 @@
    Boston, MA 02110-1301, USA.
 */
 
-#include <iostream>
-
 #define INCLUDE_CCTYPE
 #define INCLUDE_CSTDARG
+
+#include <iostream>
+
+#include "dcmtk/dcmqrdb/dcmqrdbl.h"
+#include "dcmqrdblhimpl.h"
+
+#include "dcmtk/dcmqrdb/dcmqrdbl-taglist.h"
+
+
+#include "boost/format.hpp"
+#include "boost/lambda/lambda.hpp"
+#include "boost/bind.hpp"
+#include <string>
+#include <algorithm>
+#include <exception>
+
+
+
+#include <CLucene.h>
+
+#include <boost/scoped_ptr.hpp>
+#include <boost/filesystem/operations.hpp>
+#include <boost/filesystem/path.hpp>
+
+#include <map>
+#include <list>
+
+
+#include "dcmtk/dcmqrdb/dcmqrdbl-taglist.h"
+#include "dcmtk/dcmqrdb/dcmqrdbl.h"
+
 #include "dcmtk/ofstd/ofstdinc.h"
 #include "dcmtk/dcmdata/dcfilefo.h"
 #include "dcmtk/dcmdata/dcdict.h"
-#include "dcmtk/dcmnet/dimse.h"
 #include "dcmtk/dcmnet/diutil.h"
 #include "dcmtk/dcmqrdb/dcmqrdbs.h"
 
 
 #include "dcmtk/dcmqrdb/dcmqrcnf.h"
-#include "dcmtk/dcmqrdb/dcmqrdbl.h"
-#include "dcmtk/dcmqrdb/dcmqrdbl-taglist.h"
 
-
-#include "CLucene.h"
-#include "boost/filesystem/operations.hpp"
-#include "boost/filesystem/path.hpp"
-#include "boost/format.hpp"
-#include "boost/lambda/lambda.hpp"
-#include "boost/bind.hpp"
-#include <string>
-#include <map>
-#include <list>
-#include <algorithm>
-#include <exception>
-
-using namespace lucene::index;
-using namespace lucene::analysis;
-using namespace lucene::document;
-using namespace lucene::search;
-using boost::scoped_ptr;
-namespace fs =boost::filesystem;
-
-typedef std::list< DcmTagKey > TagListType;
-typedef std::map< DcmTagKey, LuceneString > TagValueMapType;
-typedef std::map< DcmTagKey, std::string > TagStdValueMapType;
-typedef std::multimap< DcmTagKey, std::string > TagMultiStdValueMapType;
-
-
-const OFConditionConst DcmQRLuceneIndexErrorC(OFM_imagectn, 0x001, OF_error, "DcmQR Lucene Index Error");
-const OFCondition DcmQRLuceneIndexError(DcmQRLuceneIndexErrorC);
-const OFConditionConst DcmQRLuceneNoSOPIUIDErrorC(OFM_imagectn, 0x002, OF_error, "DcmQR Lucene no DCM_SOPInstanceUID");
-const OFCondition DcmQRLuceneNoSOPIUIDError(DcmQRLuceneNoSOPIUIDErrorC);
-const OFConditionConst DcmQRLuceneDoubleSOPIUIDErrorC(OFM_imagectn, 0x003, OF_error, "DcmQR Lucene double DCM_SOPInstanceUID");
-const OFCondition DcmQRLuceneDoubleSOPIUIDError(DcmQRLuceneDoubleSOPIUIDErrorC);
-
-class LowerCaseAnalyzer: public Analyzer {
-public:  
-  LowerCaseAnalyzer();
-  virtual ~LowerCaseAnalyzer();
-    TokenStream* tokenStream(const TCHAR* fieldName, CL_NS(util)::Reader* reader);
-	TokenStream* reusableTokenStream(const TCHAR* fieldName, CL_NS(util)::Reader* reader);
-};
-
-class DcmQRDBLHImpl { // TODO: implement Singleton based IndexWriter and IndexSearcher
-  public:
-    DcmQRDBLHImpl():analyzer( new LowerCaseAnalyzer()),imageDoc( new Document) {};
-    bool checkAndStoreDataForLevel( Lucene_LEVEL level, TagValueMapType &dataset);
-  scoped_ptr<Analyzer> analyzer;
-  scoped_ptr<IndexWriter> indexwriter;
-  scoped_ptr<IndexSearcher> indexsearcher;
-  scoped_ptr<Document> imageDoc;
-  scoped_ptr<Hits> findResponseHits;
-  unsigned int findResponseHitCounter;
-  TagListType findRequestList;
-  std::string queryLevelString;
-  scoped_ptr<Hits> moveResponseHits;
-  unsigned int moveResponseHitCounter;
-};
+#include "dcmqrdblhimpl.h"
 
 
 DcmQueryRetrieveLuceneIndexHandle::DcmQueryRetrieveLuceneIndexHandle(
   const OFString &storageArea,
   DcmQRLuceneIndexType indexType,
-  OFCondition& result):storageArea(storageArea),indexType(indexType),doCheckFindIdentifier(OFFalse),doCheckMoveIdentifier(OFFalse),debugLevel(10),
-  impl( new DcmQRDBLHImpl() )
-{
-  if (indexType == DcmQRLuceneWriter) {
-    bool indexExists = false;
-    if ( IndexReader::indexExists( getIndexPath().c_str() ) ) {
-	//Force unlock index incase it was left locked
-	if ( IndexReader::isLocked(getIndexPath().c_str()) )
-	    IndexReader::unlock(getIndexPath().c_str());
-	indexExists = true;
-    }
-    try {
-      impl->indexwriter.reset( new IndexWriter( getIndexPath().c_str(),
-					    impl->analyzer.get(), !indexExists) );
-    } catch(CLuceneError &e) {
-      CERR << "Exception while creation of IndexWriter caught:" << e.what() << endl;
-      result = DcmQRLuceneIndexError;
-    }
-    try {
-      impl->indexsearcher.reset( new IndexSearcher( impl->indexwriter->getDirectory() ) );
-    } catch(CLuceneError &e) {
-      CERR << "Exception while creation of IndexSearcher caught:" << e.what() << endl;
-      result = DcmQRLuceneIndexError;
-    }
-  } else if (indexType == DcmQRLuceneReader) {
-    try {
-      impl->indexsearcher.reset( new IndexSearcher( getIndexPath().c_str()) );
-    } catch(CLuceneError &e) {
-      CERR << "Exception while creation of IndexSearcher caught:" << e.what() << endl;
-      result = DcmQRLuceneIndexError;
-    }
-  }
-}
+  OFCondition& result):doCheckFindIdentifier(OFFalse),doCheckMoveIdentifier(OFFalse),debugLevel(10),
+  impl( new DcmQRDBLHImpl(storageArea, indexType, result) ) {}
 
-DcmQueryRetrieveLuceneIndexHandle::~DcmQueryRetrieveLuceneIndexHandle() {
-  if (indexType == DcmQRLuceneWriter) {
-    impl->imageDoc->clear();
-  }
-  impl->indexsearcher->close();
-  if (indexType == DcmQRLuceneWriter) {
-    impl->indexwriter->optimize();
-    impl->indexwriter->close();
-  }
-}
+DcmQueryRetrieveLuceneIndexHandle::~DcmQueryRetrieveLuceneIndexHandle() {}
 
 
-OFString DcmQueryRetrieveLuceneIndexHandle::getIndexPath(void) {
-  fs::path storagePath( storageArea.c_str() );
-  fs::path indexPath = storagePath / LUCENEPATH;
-  if (!fs::is_directory( indexPath ))
-    fs::create_directory( indexPath );
-  return indexPath.string().c_str();
-}
+
 
 void DcmQueryRetrieveLuceneIndexHandle::printIndexFile(void) {
   dbdebug(1,"%s:", __FUNCTION__) ;
@@ -383,9 +308,8 @@ OFCondition DcmQueryRetrieveLuceneIndexHandle::startMoveRequest(const char* SOPC
 
   dbdebug(2, "%s: searching index: %s", __FUNCTION__, LuceneString((const TCHAR*)baseQuery.toString(NULL)).toStdString().c_str());
   impl->moveResponseHitCounter = 0;
-// TODO: remove this dumb thing ---- snip -----  
-impl->indexwriter->flush();
-impl->indexsearcher.reset( new IndexSearcher( impl->indexwriter->getDirectory() ) );
+// TODO: remove this dumb thing ---- snip -----
+impl->refreshForSearch();
 // TODO: remove this dumb thing ---- snap -----
   impl->moveResponseHits.reset( impl->indexsearcher->search(&baseQuery) );
 
@@ -583,11 +507,9 @@ OFCondition DcmQueryRetrieveLuceneIndexHandle::startFindRequest(const char* SOPC
   dbdebug(2, "%s: searching index: %s", __FUNCTION__, LuceneString((const TCHAR*)boolQuery.toString(NULL)).toStdString().c_str());
   impl->findResponseHitCounter = 0;
 // TODO: remove this dumb thing ---- snip -----  
-impl->indexwriter->flush();
-impl->indexsearcher.reset( new IndexSearcher( impl->indexwriter->getDirectory() ) );
+impl->refreshForSearch();
 // TODO: remove this dumb thing ---- snap -----
   impl->findResponseHits.reset( impl->indexsearcher->search(&boolQuery) );
-
   dbdebug(1, "%s found %i items", __FUNCTION__, impl->findResponseHits->length());
 
   if (impl->findResponseHits->length() == 0) {
@@ -618,8 +540,7 @@ bool DcmQRDBLHImpl::checkAndStoreDataForLevel( Lucene_LEVEL level, TagValueMapTy
   lookupQuery.add( new TermQuery( new Term( UIDTagEntry.tagStr.c_str(), uidDataIter->second.c_str() ) ), BooleanClause::MUST );
 
 // TODO: remove this dumb thing ---- snip -----  
-indexwriter->flush();
-indexsearcher.reset( new IndexSearcher( indexwriter->getDirectory() ) );
+refreshForSearch();
 // TODO: remove this dumb thing ---- snap -----
   scoped_ptr<Hits> hits( indexsearcher->search(&lookupQuery) );
   if (hits->length()>0) {
@@ -663,8 +584,7 @@ OFCondition DcmQueryRetrieveLuceneIndexHandle::storeRequest(const char* SOPClass
       }
       TermQuery tq( new Term( FieldNameDCM_SOPInstanceUID.c_str(), LuceneString( SOPInstanceUID ).c_str() ) );
 // TODO: remove this dumb thing ---- snip -----  
-impl->indexwriter->flush();
-impl->indexsearcher.reset( new IndexSearcher( impl->indexwriter->getDirectory() ) );
+impl->refreshForSearch();
 // TODO: remove this dumb thing ---- snap -----
       scoped_ptr<Hits> hits( impl->indexsearcher->search(&tq) );
       if (hits->length()>0) {

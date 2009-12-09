@@ -5,6 +5,7 @@
 #include <map>
 #include <string>
 #include "dcmtk/dcmdata/dcdeftag.h"
+#include "dcmtk/dcmnet/dimse.h"
 #include <boost/assign/list_of.hpp>
 #include <boost/iterator/transform_iterator.hpp>
 
@@ -221,13 +222,8 @@ const LevelTagMapType LevelToUIDTag = boost::assign::map_list_of(PATIENT_LEVEL, 
 (IMAGE_LEVEL, DcmQRLuceneTagKeyMap.find(DCM_SOPInstanceUID)->second);
 
 					       
-Lucene_LEVEL LuceneSmallDcmElmtToLevel(const LuceneSmallDcmElmt &e) {
-  return DcmQRLuceneTagKeyMap.find(e.XTag)->second.level;
-}
-
-Lucene_Entry::KEY_TYPE LuceneSmallDcmElmtToKeyType(const LuceneSmallDcmElmt &e) {
-  return DcmQRLuceneTagKeyMap.find(e.XTag)->second.keyAttr;
-}
+Lucene_LEVEL LuceneSmallDcmElmtToLevel(const LuceneSmallDcmElmt &e);
+Lucene_Entry::KEY_TYPE LuceneSmallDcmElmtToKeyType(const LuceneSmallDcmElmt &e);
 
 
 #endif // DCMQRDBL_TAGLIST_H

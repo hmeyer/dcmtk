@@ -61,10 +61,6 @@ private:
   bool tagSupported(DcmTagKey tag);
   
   
-  OFString getIndexPath(void);
-  
-  const OFString storageArea;
-  const DcmQRLuceneIndexType indexType;
 
   /// flag indicating whether or not the check function for FIND requests is enabled
   OFBool doCheckFindIdentifier;
