@@ -151,7 +151,6 @@ void DcmDataset::print(ostream &out,
             dO->print(out, flags, level + 1, pixelFileName, pixelCounter);
         } while (elementList->seek(ELP_next));
     }
-    out << "# Used TransferSyntax: " << DcmXfer(Xfer).getXferName();
 }
 
 
