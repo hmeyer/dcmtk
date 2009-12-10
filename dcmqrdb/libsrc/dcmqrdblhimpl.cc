@@ -106,3 +106,37 @@ OFString DcmQRDBLHImpl::getIndexPath(void) {
     fs::create_directory( indexPath );
   return indexPath.string().c_str();
 }
+
+bool DcmQRDBLHImpl::checkAndStoreDataForLevel( Lucene_LEVEL level, TagValueMapType &dataset ) { // returns true if Object already existed in level
+  LevelTagMapType::const_iterator uidTagIter = LevelToUIDTag.find( level );
+  if (uidTagIter == LevelToUIDTag.end() ) std::runtime_error(std::string(__FUNCTION__) + ": level " + toString(level) +" not found!");
+  const Lucene_Entry &UIDTagEntry = uidTagIter->second;
+  TagValueMapType::const_iterator uidDataIter = dataset.find( UIDTagEntry.tag );
+  if (uidDataIter == dataset.end() ) std::runtime_error(std::string(__FUNCTION__) + ": tag " + UIDTagEntry.tagStr.toStdString() + " not found!");
+
+  BooleanQuery lookupQuery;
+  lookupQuery.add( new TermQuery( new Term( FieldNameDocumentDicomLevel.c_str(), QRLevelStringMap.find( level )->second.c_str() ) ), BooleanClause::MUST );
+  lookupQuery.add( new TermQuery( new Term( UIDTagEntry.tagStr.c_str(), uidDataIter->second.c_str() ) ), BooleanClause::MUST );
+
+// TODO: remove this dumb thing ---- snip -----  
+refreshForSearch();
+// TODO: remove this dumb thing ---- snap -----
+  scoped_ptr<Hits> hits( indexsearcher->search(&lookupQuery) );
+  if (hits->length()>0) {
+    return true;
+  } else {
+    imageDoc->clear();
+    imageDoc->add( *new Field( FieldNameDocumentDicomLevel.c_str(), QRLevelStringMap.find( level )->second.c_str(), Field::STORE_YES| Field::INDEX_UNTOKENIZED| Field::TERMVECTOR_NO ) );
+    for(TagValueMapType::const_iterator i=dataset.begin(); i != dataset.end(); i++) {
+      if (i->second.length() > 0) {
+	const Lucene_Entry &tag = DcmQRLuceneTagKeyMap.find( i->first )->second;
+	if (tag.level <= level) {
+	  int tokenizeFlag =  (tag.fieldType == Lucene_Entry::NAME_TYPE || tag.fieldType == Lucene_Entry::TEXT_TYPE) ? Field::INDEX_TOKENIZED : Field::INDEX_UNTOKENIZED;
+	  imageDoc->add( *new Field( DcmQRLuceneTagKeyMap.find( i->first )->second.tagStr.c_str(), i->second.c_str() , Field::STORE_YES| tokenizeFlag | Field::TERMVECTOR_NO ) );
+	}
+      }
+    }
+    indexwriter->addDocument(imageDoc.get());
+    return false;
+  }
+}

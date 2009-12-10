@@ -71,6 +71,7 @@ DcmQueryRetrieveLuceneIndexHandle::~DcmQueryRetrieveLuceneIndexHandle() {}
 
 
 void DcmQueryRetrieveLuceneIndexHandle::printIndexFile(void) {
+dbdebug(1, "%s: start (line %i)", __FUNCTION__, __LINE__) ;
   dbdebug(1,"%s:", __FUNCTION__) ;
   IndexReader *reader = impl->indexsearcher->getReader();
   Document myDoc;
@@ -83,28 +84,33 @@ void DcmQueryRetrieveLuceneIndexHandle::printIndexFile(void) {
 
 bool DcmQueryRetrieveLuceneIndexHandle::tagSupported (DcmTagKey tag)
 {
+dbdebug(1, "%s: start (line %i)", __FUNCTION__, __LINE__) ;
   return DcmQRLuceneTagKeyMap.find( tag ) != DcmQRLuceneTagKeyMap.end();
 }
 
 
 void DcmQueryRetrieveLuceneIndexHandle::setIdentifierChecking(OFBool checkFind, OFBool checkMove)
 {
+dbdebug(1, "%s: start (line %i)", __FUNCTION__, __LINE__) ;
     doCheckFindIdentifier = checkFind;
     doCheckMoveIdentifier = checkMove;
 }
 
 void DcmQueryRetrieveLuceneIndexHandle::setDebugLevel(int dLevel)
 {
+dbdebug(1, "%s: start (line %i)", __FUNCTION__, __LINE__) ;
 //    debugLevel = dLevel;
 }
 
 OFCondition DcmQueryRetrieveLuceneIndexHandle::pruneInvalidRecords()
 {
+dbdebug(1, "%s: start (line %i)", __FUNCTION__, __LINE__) ;
     throw std::runtime_error(std::string(__FUNCTION__) + ": not Implemented yet!");
 }
 
 OFCondition DcmQueryRetrieveLuceneIndexHandle::cancelMoveRequest(DcmQueryRetrieveDatabaseStatus* status)
 {
+dbdebug(1, "%s: start (line %i)", __FUNCTION__, __LINE__) ;
   impl->moveResponseHitCounter = 0;
   impl->moveResponseHits.reset(NULL);
   status->setStatus(STATUS_MOVE_Cancel_SubOperationsTerminatedDueToCancelIndication);
@@ -113,8 +119,9 @@ OFCondition DcmQueryRetrieveLuceneIndexHandle::cancelMoveRequest(DcmQueryRetriev
 
 OFCondition DcmQueryRetrieveLuceneIndexHandle::nextMoveResponse(char* SOPClassUID, char* SOPInstanceUID, char* imageFileName, short unsigned int* numberOfRemainingSubOperations, DcmQueryRetrieveDatabaseStatus* status)
 {
-  if (impl->moveResponseHitCounter > 0) {
-    Document &responseDoc = impl->findResponseHits->doc( impl->moveResponseHitCounter++ );
+dbdebug(1, "%s: start (line %i)", __FUNCTION__, __LINE__) ;
+  if (impl->moveResponseHits && impl->moveResponseHitCounter < impl->moveResponseHits->length()) {
+    Document &responseDoc = impl->moveResponseHits->doc( impl->moveResponseHitCounter++ );
     std::string SOPClassUIDString;
     std::string SOPInstanceUIDString;
     std::string fileNameString;
@@ -133,10 +140,16 @@ OFCondition DcmQueryRetrieveLuceneIndexHandle::nextMoveResponse(char* SOPClassUI
     strcpy (SOPInstanceUID, SOPInstanceUIDString.c_str()) ;
     strcpy (imageFileName, fileNameString.c_str()) ;
 
+  dbdebug(1, "%s about to serve #%i of %i", __FUNCTION__, impl->moveResponseHitCounter, impl->moveResponseHits->length());
+  dbdebug(1, "%s SOPClassUID:%s SOPInstanceUID:%s imageFileName:%s", __FUNCTION__, SOPClassUID, SOPInstanceUID, imageFileName);
+  dbdebug(1, "%s doc is:%s", __FUNCTION__, LuceneString( (const TCHAR*)responseDoc.toString() ).toStdString().c_str());
+    
+    
     status->setStatus(STATUS_Pending);
     dbdebug(1,"%s: STATUS_Pending", __FUNCTION__) ;
     return (EC_Normal);
   } else {
+  dbdebug(1, "%s no more results - ending", __FUNCTION__);
     cancelMoveRequest(status);
     dbdebug(1, "%s : STATUS_Success", __FUNCTION__) ;
     status->setStatus(STATUS_Success);
@@ -201,6 +214,7 @@ Query *generateQuery(const Lucene_Entry &entryData, const std::string &svalue) {
 
 OFCondition DcmQueryRetrieveLuceneIndexHandle::startMoveRequest(const char* SOPClassUID, DcmDataset* moveRequestIdentifiers, DcmQueryRetrieveDatabaseStatus* status)
 {
+dbdebug(1, "%s: start (line %i)", __FUNCTION__, __LINE__) ;
   Lucene_QUERY_CLASS rootLevel;
   /**** Is SOPClassUID supported ?
   ***/
@@ -224,7 +238,7 @@ OFCondition DcmQueryRetrieveLuceneIndexHandle::startMoveRequest(const char* SOPC
       if (s==NULL) s = (char*)"";
       dataMap.insert( TagStdValueMapType::value_type( elementTag, s ) );
     } else {
-	dbdebug(1, "%s : unsupported Tag %s in Find-Request - dropping Tag", __FUNCTION__, elementTag.toString().c_str()) ;
+	dbdebug(1, "%s : unsupported Tag %s in Move-Request - dropping Tag", __FUNCTION__, elementTag.toString().c_str()) ;
     }
   }
 
@@ -252,6 +266,10 @@ OFCondition DcmQueryRetrieveLuceneIndexHandle::startMoveRequest(const char* SOPC
     
   // Lucene Query
   BooleanQuery baseQuery;
+  // only look for image level objects
+  baseQuery.add( new TermQuery( new Term( FieldNameDocumentDicomLevel.c_str(), ImageLevelLuceneString.c_str() ) ), BooleanClause::MUST );
+
+  
   Lucene_LEVEL baseLevel = PATIENT_LEVEL;
   if (rootLevel == STUDY_ROOT) baseLevel = STUDY_LEVEL;
   Lucene_LEVEL maxLevel = IMAGE_LEVEL;
@@ -290,9 +308,7 @@ OFCondition DcmQueryRetrieveLuceneIndexHandle::startMoveRequest(const char* SOPC
 	  dbdebug(1, "%s :empty unique Key found in Move-Request - ignoring",__FUNCTION__) ;
 	}
       } else {
-	dbdebug(1, "%s :Non-unique Key found in Move-Request",__FUNCTION__) ;
-	status->setStatus(STATUS_MOVE_Failed_UnableToProcess);
-	return (DcmQRLuceneIndexError) ;
+	dbdebug(1, "%s :Non-unique Key found in Move-Request: %s - ignoring",__FUNCTION__, entryData.tagStr.toStdString().c_str()) ;
       }
     } else if (entryData.level < queryLevel) {
 	dbdebug(1, "%s :Multiple Unique Key found above Query Level (level %i)",__FUNCTION__,entryData.level) ;
@@ -304,7 +320,9 @@ OFCondition DcmQueryRetrieveLuceneIndexHandle::startMoveRequest(const char* SOPC
       return (DcmQRLuceneIndexError) ;
     }
   }
-  baseQuery.add( multiQuery, BooleanClause::MUST );
+  if (multiQuery->getClauseCount() != 0)
+    baseQuery.add( multiQuery, BooleanClause::MUST );
+  else delete(multiQuery);
 
   dbdebug(2, "%s: searching index: %s", __FUNCTION__, LuceneString((const TCHAR*)baseQuery.toString(NULL)).toStdString().c_str());
   impl->moveResponseHitCounter = 0;
@@ -327,6 +345,7 @@ impl->refreshForSearch();
 
 OFCondition DcmQueryRetrieveLuceneIndexHandle::cancelFindRequest(DcmQueryRetrieveDatabaseStatus* status)
 {
+dbdebug(1, "%s: start (line %i)", __FUNCTION__, __LINE__) ;
   impl->findRequestList.clear();
   impl->findResponseHitCounter = 0;
   impl->findResponseHits.reset(NULL);
@@ -336,6 +355,7 @@ OFCondition DcmQueryRetrieveLuceneIndexHandle::cancelFindRequest(DcmQueryRetriev
 
 OFCondition DcmQueryRetrieveLuceneIndexHandle::nextFindResponse(DcmDataset** findResponseIdentifiers, DcmQueryRetrieveDatabaseStatus* status)
 {
+dbdebug(1, "%s: start (line %i)", __FUNCTION__, __LINE__) ;
     dbdebug(1, "%s : about to deliver hit #%i/%i\n", __FUNCTION__, impl->findResponseHitCounter, impl->findResponseHits->length()) ;
     *findResponseIdentifiers = new DcmDataset ;
     if ( *findResponseIdentifiers == NULL ) {
@@ -402,6 +422,7 @@ OFCondition DcmQueryRetrieveLuceneIndexHandle::nextFindResponse(DcmDataset** fin
 
 OFCondition DcmQueryRetrieveLuceneIndexHandle::startFindRequest(const char* SOPClassUID, DcmDataset* findRequestIdentifiers, DcmQueryRetrieveDatabaseStatus* status)
 {
+dbdebug(1, "%s: start (line %i)", __FUNCTION__, __LINE__) ;
   // Find the QR-Information Model
   Lucene_QUERY_CLASS rootLevel;
   StringQRClassMapType::const_iterator qrClassI = StringQRClassMap.find( SOPClassUID );
@@ -525,46 +546,13 @@ impl->refreshForSearch();
 
 OFCondition DcmQueryRetrieveLuceneIndexHandle::makeNewStoreFileName(const char* SOPClassUID, const char* SOPInstanceUID, char* newImageFileName)
 {
+dbdebug(1, "%s: start (line %i)", __FUNCTION__, __LINE__) ;
     throw std::runtime_error(std::string(__FUNCTION__) + ": not Implemented yet!");
 }
 
-bool DcmQRDBLHImpl::checkAndStoreDataForLevel( Lucene_LEVEL level, TagValueMapType &dataset ) { // returns true if Object already existed in level
-  LevelTagMapType::const_iterator uidTagIter = LevelToUIDTag.find( level );
-  if (uidTagIter == LevelToUIDTag.end() ) std::runtime_error(std::string(__FUNCTION__) + ": level " + toString(level) +" not found!");
-  const Lucene_Entry &UIDTagEntry = uidTagIter->second;
-  TagValueMapType::const_iterator uidDataIter = dataset.find( UIDTagEntry.tag );
-  if (uidDataIter == dataset.end() ) std::runtime_error(std::string(__FUNCTION__) + ": tag " + UIDTagEntry.tagStr.toStdString() + " not found!");
-
-  BooleanQuery lookupQuery;
-  lookupQuery.add( new TermQuery( new Term( FieldNameDocumentDicomLevel.c_str(), QRLevelStringMap.find( level )->second.c_str() ) ), BooleanClause::MUST );
-  lookupQuery.add( new TermQuery( new Term( UIDTagEntry.tagStr.c_str(), uidDataIter->second.c_str() ) ), BooleanClause::MUST );
-
-// TODO: remove this dumb thing ---- snip -----  
-refreshForSearch();
-// TODO: remove this dumb thing ---- snap -----
-  scoped_ptr<Hits> hits( indexsearcher->search(&lookupQuery) );
-  if (hits->length()>0) {
-    return true;
-  } else {
-    imageDoc->clear();
-    imageDoc->add( *new Field( FieldNameDocumentDicomLevel.c_str(), QRLevelStringMap.find( level )->second.c_str(), Field::STORE_YES| Field::INDEX_UNTOKENIZED| Field::TERMVECTOR_NO ) );
-    for(TagValueMapType::const_iterator i=dataset.begin(); i != dataset.end(); i++) {
-      if (i->second.length() > 0) {
-	const Lucene_Entry &tag = DcmQRLuceneTagKeyMap.find( i->first )->second;
-	if (tag.level <= level) {
-	  int tokenizeFlag =  (tag.fieldType == Lucene_Entry::NAME_TYPE || tag.fieldType == Lucene_Entry::TEXT_TYPE) ? Field::INDEX_TOKENIZED : Field::INDEX_UNTOKENIZED;
-	  imageDoc->add( *new Field( DcmQRLuceneTagKeyMap.find( i->first )->second.tagStr.c_str(), i->second.c_str() , Field::STORE_YES| tokenizeFlag | Field::TERMVECTOR_NO ) );
-	}
-      }
-    }
-    indexwriter->addDocument(imageDoc.get());
-    return false;
-  }
-}
-
-
 OFCondition DcmQueryRetrieveLuceneIndexHandle::storeRequest(const char* SOPClassUID, const char* SOPInstanceUID, const char* imageFileName, DcmQueryRetrieveDatabaseStatus* status, OFBool isNew)
 {
+dbdebug(1, "%s: start (line %i)", __FUNCTION__, __LINE__) ;
     dbdebug(1,"%s: storage request of file : %s", __FUNCTION__, imageFileName);
     /**** Get IdxRec values from ImageFile
     ***/

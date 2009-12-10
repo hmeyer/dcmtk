@@ -100,6 +100,7 @@ const std::string PatientLevelString("PATIENT");
 const std::string StudyLevelString("STUDY");
 const std::string SerieLevelString("SERIES");
 const std::string ImageLevelString("IMAGE");
+const LuceneString ImageLevelLuceneString(ImageLevelString);
 const std::map< Lucene_LEVEL, LuceneString > QRLevelStringMap = boost::assign::map_list_of( PATIENT_LEVEL, LuceneString(PatientLevelString))
   (STUDY_LEVEL, LuceneString(StudyLevelString))
   (SERIE_LEVEL, LuceneString(SerieLevelString))
