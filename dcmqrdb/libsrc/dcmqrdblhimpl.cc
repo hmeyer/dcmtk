@@ -40,7 +40,7 @@
 
 DcmQRDBLHImpl::DcmQRDBLHImpl(const OFString &storageArea,
   DcmQRLuceneIndexType indexType,
-  OFCondition& result):analyzer( new LowerCaseAnalyzer()),imageDoc( new Document),indexType( indexType ) 
+  OFCondition& result):storageArea(storageArea), analyzer( new LowerCaseAnalyzer()),imageDoc( new Document),indexType( indexType ) 
   {
   if (indexType == DcmQRLuceneWriter) {
     bool indexExists = false;

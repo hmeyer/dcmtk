@@ -78,6 +78,7 @@ public:
 
 class DcmQRDBLHImpl { // TODO: implement Singleton based IndexWriter and IndexSearcher
   public:
+  const OFString storageArea;
   scoped_ptr<Analyzer> analyzer;
   scoped_ptr<IndexWriter> indexwriter;
   scoped_ptr<IndexSearcher> indexsearcher;
@@ -88,7 +89,6 @@ class DcmQRDBLHImpl { // TODO: implement Singleton based IndexWriter and IndexSe
   std::string queryLevelString;
   scoped_ptr<Hits> moveResponseHits;
   unsigned int moveResponseHitCounter;
-  const OFString storageArea;
   const DcmQRLuceneIndexType indexType;
 
   DcmQRDBLHImpl(const OFString &s, DcmQRLuceneIndexType i, OFCondition &r);
