@@ -46,6 +46,7 @@ public:
   ~DcmQueryRetrieveLuceneIndexHandle();
   void printIndexFile(void);
   virtual OFCondition storeRequest(const char* SOPClassUID, const char* SOPInstanceUID, const char* imageFileName, DcmQueryRetrieveDatabaseStatus* status, OFBool isNew = OFTrue);
+  static bool indexExists( const OFString &s );
 private:
   virtual void setIdentifierChecking(OFBool checkFind, OFBool checkMove);
   virtual void setDebugLevel(int debugLevel);

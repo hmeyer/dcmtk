@@ -43,6 +43,12 @@
 #include "dcmtk/ofstd/ofcmdln.h"
 #include "dcmtk/dcmqrdb/dcmqrcnf.h"
 
+#include <boost/shared_ptr.hpp>
+#include <vector>
+#include <string>
+
+using namespace std;
+
 class DcmQueryRetrieveDatabaseHandle;
 
 /*
@@ -58,6 +64,7 @@ class DcmQueryRetrieveDatabaseHandle;
 /*
  * Type definitions
  */
+typedef vector< string > TI_String_List;
 
 struct TI_ImageEntry
 {
@@ -66,17 +73,20 @@ struct TI_ImageEntry
     int   intImageNumber;
 } ;
 
+typedef vector< TI_ImageEntry > TI_ImageEntry_List;
+
 struct TI_SeriesEntry
 {
     DIC_UI  seriesInstanceUID;
     DIC_IS  seriesNumber;
     int   intSeriesNumber;
     DIC_CS  modality;
-    TI_ImageEntry *images[TI_MAXIMAGES];  /* array of image pointers */
-    int     imageCount;
+    TI_ImageEntry_List images;
 
     time_t lastQueryTime; /* time we last queried db */
 };
+
+typedef vector< TI_SeriesEntry > TI_SeriesEntry_List;
 
 struct TI_StudyEntry
 {
@@ -84,33 +94,32 @@ struct TI_StudyEntry
     DIC_CS  studyID;
     DIC_PN  patientsName;
     DIC_LO  patientID;
-    TI_SeriesEntry  *series[TI_MAXSERIES];  /* array of series pointers */
-    int     seriesCount;
+    TI_SeriesEntry_List series;
     time_t lastQueryTime; /* time we last queried db */
 };
 
+typedef vector< TI_StudyEntry > TI_StudyEntry_List;
 
 struct TI_DBEntry
 {
-    const char *title;  /* the CTN AE Title associated with this DB */
+  string title;
+  TI_String_List peerTitles; /* the CTN AE Title associated with this DB */
 
-    const char **peerTitles;  /* peer titles which can read this database
-       * and thus we can comminicate with */
-    int peerTitleCount; /* number of peer titles */
+    boost::shared_ptr<DcmQueryRetrieveDatabaseHandle> dbHandle;  /* handle to current db */
 
-    DcmQueryRetrieveDatabaseHandle *dbHandle;  /* handle to current db */
+    TI_StudyEntry_List studies; /* array of study pointers */
 
-    TI_StudyEntry *studies[TI_MAXSTUDIES]; /* array of study pointers */
-    int     studyCount;
-
-    int currentStudy; /* index of current study */
-    int currentSeries;  /* index of current series in current study */
-    int currentImage; /* index of current image in current study */
+    unsigned int currentStudyIdx; /* index of current study */
+    unsigned int currentSeriesIdx;  /* index of current series in current study */
+    unsigned int currentImageIdx; /* index of current image in current study */
 
     time_t lastQueryTime; /* time we last queried db */
 
     OFBool isRemoteDB;  /* true if DB is remote */
 };
+
+typedef vector< TI_DBEntry > TI_DBEntry_List;
+
 
 struct TI_GenericCallbackStruct
 {
@@ -126,6 +135,7 @@ typedef OFBool (*TI_GenericEntryCallbackFunction)(TI_GenericCallbackStruct *cbst
 class DcmQueryRetrieveTelnetInitiator
 {
 public:
+    typedef TI_DBEntry_List::iterator TI_DBEntry_it;
 
     /** constructor
      *  @param cfg configuration facility
@@ -140,7 +150,7 @@ public:
      *  @param peerName name of peer
      *  @param configFileName name of configuration file from which peer was read
      */
-    OFBool addPeerName(const char *peerName, const char *configFileName);
+    OFBool addPeerName(const string &peerName, const string &configFileName);
 
     /** print TI configuration to stdout 
      */
@@ -154,7 +164,7 @@ public:
     /** set local aetitle
      *  @param ae aetitle
      */
-    void setAETitle(const char *ae)
+    void setAETitle(const string &ae)
     {
       myAETitle = ae;
     }
@@ -186,7 +196,7 @@ public:
     /// return number of databases
     int getdbCount() const
     {
-      return dbCount;
+      return dbEntries.size();
     }
 
     /** create configuration entries for remote databases
@@ -195,7 +205,7 @@ public:
      *  @param remoteDBTitles list of remote DB titles
      */
     void createConfigEntries(
-      const char *configFileName,
+      const string &configFileName,
       int remoteDBTitlesCount,
       const char **remoteDBTitles);
 
@@ -231,11 +241,11 @@ private:
     OFBool TI_sendEcho();
     OFBool TI_storeImage(char *sopClass, char *sopInstance, char * imgFile);
     OFBool TI_remoteFindQuery(
-        TI_DBEntry *db, DcmDataset *query,
+        TI_DBEntry &db, DcmDataset *query,
         TI_GenericEntryCallbackFunction callbackFunction,
         TI_GenericCallbackStruct *callbackData);
     OFBool TI_title(int arg, const char * /*cmdbuf*/ );
-    OFBool TI_attachDB(TI_DBEntry *db);
+    OFBool TI_attachDB(TI_DBEntry &db);
     OFBool TI_database(int arg, const char * /*cmdbuf*/ );
     OFBool TI_echo(int arg, const char * /*cmdbuf*/ );
     OFBool TI_quit(int arg, const char * /*cmdbuf*/ );
@@ -245,44 +255,39 @@ private:
     OFBool TI_series(int arg, const char * /*cmdbuf*/ );
     OFBool TI_actualizeImages();
     OFBool TI_image(int arg, const char * /*cmdbuf*/ );
-    OFBool TI_buildStudies(TI_DBEntry *db);
-    OFBool TI_buildSeries(TI_DBEntry *db, TI_StudyEntry *study);
-    OFBool TI_buildRemoteImages(TI_DBEntry *db, TI_StudyEntry *study, TI_SeriesEntry *series);
-    OFBool TI_buildImages(TI_DBEntry *db, TI_StudyEntry *study, TI_SeriesEntry *series);
+    OFBool TI_buildStudies(TI_DBEntry &db);
+    OFBool TI_buildSeries(TI_DBEntry &db, TI_StudyEntry &study);
+    OFBool TI_buildRemoteImages(TI_DBEntry &db, TI_StudyEntry &study, TI_SeriesEntry &series);
+    OFBool TI_buildImages(TI_DBEntry &db, TI_StudyEntry &study, TI_SeriesEntry &series);
     OFBool TI_sendStudy(int arg, const char * /*cmdbuf*/ );
     OFBool TI_sendSeries(int arg, const char * /*cmdbuf*/ );
     OFBool TI_sendImage(int arg, const char * /*cmdbuf*/ );
     OFBool TI_send(int /*arg*/, const char *cmdbuf);
     OFBool TI_shortHelp(int /*arg*/ , const char * /*cmdbuf*/ );
     OFBool TI_help(int arg, const char * /*cmdbuf*/ );
-    OFBool TI_buildRemoteStudies(TI_DBEntry *db);
-    OFBool TI_buildRemoteSeries(TI_DBEntry *db, TI_StudyEntry *study);
-    OFBool TI_dbReadable(const char *dbTitle);
-    time_t TI_dbModifyTime(const char *dbTitle);
+    OFBool TI_buildRemoteStudies(TI_DBEntry &db);
+    OFBool TI_buildRemoteSeries(TI_DBEntry &db, TI_StudyEntry &study);
+    OFBool TI_dbReadable(const string &dbTitle);
+    time_t TI_dbModifyTime(const string &dbTitle);
     OFCondition addPresentationContexts(T_ASC_Parameters *params);
 
     OFBool findDBPeerTitles(
-      const char *configFileName,
-      TI_DBEntry *dbEntry, 
-      const char *peer);
+      const string &configFileName,
+      TI_DBEntry &dbEntry, 
+      const string &peer);
     
     /// the CTN databases we know
-    TI_DBEntry **dbEntries;
-    
-    /// number of entries in databases we know
-    int dbCount;
+    TI_DBEntry_List dbEntries;
     
     /// current peer to talk to
-    const char *peerHostName;
+    string peerHostName;
     
     /// list of peer names
-    const char *peerNames[TI_MAXPEERS];
+    TI_String_List peerNames;
 
-    /// number of peer names in list
-    int peerNamesCount;
 
     /// my application entity title
-    const char *myAETitle;
+    string myAETitle;
 
     /// active network
     T_ASC_Network *net;
@@ -294,10 +299,10 @@ private:
     OFCmdUnsignedInt maxReceivePDULength;
 
     /// current database index
-    int currentdb;
+    unsigned int currentdbIdx;
     
     /// current peer title
-    const char *currentPeerTitle;
+    string currentPeerTitle;
 
     /// configuration facility
     DcmQueryRetrieveConfig& config;

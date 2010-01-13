@@ -60,6 +60,7 @@ END_EXTERN_C
 #include <zlib.h>          /* for zlibVersion() */
 #endif
 
+
 #define OFFIS_CONSOLE_APPLICATION "dcmqrti"
 #define MAXREMOTEDBTITLES 20
 #define APPLICATIONTITLE "TELNET_INITIATOR"
@@ -331,7 +332,6 @@ int main( int argc, char *argv[] )
 
       // load up configuration info
       conf.createConfigEntries(configFileName, remoteDBTitlesCount, remoteDBTitles);
-
       // only go ahead in case there is at least one database we know of
       if( conf.getdbCount() > 0 )
       {

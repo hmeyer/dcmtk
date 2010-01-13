@@ -96,7 +96,9 @@ class DcmQRDBLHImpl { // TODO: implement Singleton based IndexWriter and IndexSe
   bool checkAndStoreDataForLevel( Lucene_LEVEL level, TagValueMapType &dataset);
   OFString getIndexPath(void);
   void refreshForSearch(void);
+  static bool indexExists( const OFString &s );
   private:
+  static const std::string storageAreaToIndexPath(const OFString &storageArea);
   OFCondition recreateSearcher(void);
 };
 

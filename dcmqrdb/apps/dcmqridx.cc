@@ -80,9 +80,6 @@ int main (int argc, char *argv[])
 {
     char sclass [120] ;
     char sinst  [120] ;
-#ifdef DEBUG
-    char fname  [120] ;
-#endif
     DcmQueryRetrieveDatabaseStatus status;
 
     const char *opt_storageArea = NULL;

@@ -59,6 +59,11 @@
 #include "dcmqrdblhimpl.h"
 
 
+bool DcmQueryRetrieveLuceneIndexHandle::indexExists( const OFString &s ) {
+  return DcmQRDBLHImpl::indexExists( s );
+}
+
+
 DcmQueryRetrieveLuceneIndexHandle::DcmQueryRetrieveLuceneIndexHandle(
   const OFString &storageArea,
   DcmQRLuceneIndexType indexType,

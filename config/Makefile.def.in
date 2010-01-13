@@ -42,7 +42,7 @@ DEBUG = @DEBUG@
 # Global definitions
 #
 
-GLOBALDEFS = @DEFS@
+GLOBALDEFS = @DEFS@ -DWITH_LUCENE
 
 #
 # ARCH defines special machine archtecture compiler settings

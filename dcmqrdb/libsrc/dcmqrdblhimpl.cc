@@ -37,6 +37,11 @@
 
 #include "dcmqrdblhimpl.h"
 
+#include <iostream>
+
+bool DcmQRDBLHImpl::indexExists( const OFString &s ) {
+  return IndexReader::indexExists( storageAreaToIndexPath( s ).c_str() );
+}
 
 DcmQRDBLHImpl::DcmQRDBLHImpl(const OFString &storageArea,
   DcmQRLuceneIndexType indexType,
@@ -99,11 +104,18 @@ DcmQRDBLHImpl::~DcmQRDBLHImpl() {
   }
 }
 
-OFString DcmQRDBLHImpl::getIndexPath(void) {
+const std::string DcmQRDBLHImpl::storageAreaToIndexPath(const OFString &storageArea) {
   fs::path storagePath( storageArea.c_str() );
   fs::path indexPath = storagePath / LUCENEPATH;
-  if (!fs::is_directory( indexPath ))
+  return indexPath.string();
+}
+
+
+OFString DcmQRDBLHImpl::getIndexPath(void) {
+  fs::path indexPath( storageAreaToIndexPath( storageArea ) );
+  if (!fs::exists( indexPath ))
     fs::create_directory( indexPath );
+  else if (!fs::is_directory( indexPath )) throw new std::runtime_error("Index Path " + indexPath.string() + " is not a directory");
   return indexPath.string().c_str();
 }
 
