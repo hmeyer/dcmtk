@@ -924,7 +924,7 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_title(int arg, const char * /*cmdbuf*
         /* choosing new peer AE title */
         if (arg >= (int)currentdb.peerTitles.size()) {
             printf("ERROR: Peer AE Title Choice: 0 - %d\n",
-                currentdb.peerTitles.size() - 1);
+                (unsigned int)currentdb.peerTitles.size() - 1);
         } else {
             currentPeerTitle = currentdb.peerTitles[arg];
         }
@@ -997,7 +997,7 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_database(int arg, const char * /*cmdb
         /* choosing new title */
         if (arg >= (int)dbEntries.size()) {
             printf("ERROR: Database Title Choice: 0 - %d\n",
-                dbEntries.size() - 1);
+                (unsigned int)dbEntries.size() - 1);
         } else {
             /* release old dbHandle */
             TI_detachDB(currentdb);
@@ -1108,7 +1108,7 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_study(int arg, const char * /*cmdbuf*
         /* set current study */
         if (arg >= (int)currentdb.studies.size()) {
             printf("ERROR: Study Choice: 0 - %d\n",
-                currentdb.studies.size()- 1);
+                (unsigned int)currentdb.studies.size()- 1);
             return OFFalse;
         }
         currentdb.currentStudyIdx = arg;
@@ -1130,7 +1130,7 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_study(int arg, const char * /*cmdbuf*
     }
 
     printf("\n");
-    printf("%d Studies in Database: %s\n", currentdb.studies.size(), currentdb.title.c_str());
+    printf("%d Studies in Database: %s\n", (unsigned int)currentdb.studies.size(), currentdb.title.c_str());
     return OFTrue;
 }
 
@@ -1188,7 +1188,7 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_series(int arg, const char * /*cmdbuf
         /* set current series */
         if (arg >= (int)study.series.size()) {
             printf("ERROR: Series Choice: 0 - %d\n",
-                study.series.size() - 1);
+                (unsigned int)study.series.size() - 1);
             return OFFalse;
         }
         currentdb.currentSeriesIdx = arg;
@@ -1211,7 +1211,7 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_series(int arg, const char * /*cmdbuf
 
     printf("\n");
     printf("%d Series in StudyID %s,\n",
-        study.series.size(), study.studyID);
+        (unsigned int)study.series.size(), study.studyID);
     printf("  Patient: %s (Database: %s)\n",
         study.patientsName, currentdb.title.c_str());
     return OFTrue;
@@ -1280,7 +1280,7 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_image(int arg, const char * /*cmdbuf*
         /* set current image */
         if (arg >= (int)series.images.size()) {
             printf("ERROR: Image Choice: 0 - %d\n",
-                series.images.size() - 1);
+                (unsigned int)series.images.size() - 1);
             return OFFalse;
         }
         currentdb.currentImageIdx = arg;
@@ -1303,7 +1303,7 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_image(int arg, const char * /*cmdbuf*
 
     printf("\n");
     printf("%d Images in %s Series, StudyID %s,\n",
-        series.images.size(), series.modality, study.studyID);
+        (unsigned int)series.images.size(), series.modality, study.studyID);
     printf("  Patient: %s (Database: %s)\n",
         study.patientsName, currentdb.title.c_str());
     return OFTrue;
@@ -1348,7 +1348,7 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_sendStudy(int arg, const char * /*cmd
     if (arg < 0) {
     } else if (arg >= (int)currentdb.studies.size()) {
         printf("ERROR: Study Choice: 0 - %d\n",
-            currentdb.studies.size() - 1);
+            (unsigned int)currentdb.studies.size() - 1);
         return OFFalse;
     } else {
       study = currentdb.studies.at( arg );
@@ -1424,7 +1424,7 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_sendSeries(int arg, const char * /*cm
     if (arg < 0) {
     } else if (arg >= (int)study.series.size()) {
         printf("ERROR: Series Choice: 0 - %d\n",
-            study.series.size() - 1);
+            (unsigned int)study.series.size() - 1);
         return OFFalse;
     } else {
       series = study.series.at( arg );;
@@ -1502,7 +1502,7 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_sendImage(int arg, const char * /*cmd
     if (arg < 0) {
     } else if (arg >= (int)series.images.size()) {
         printf("ERROR: Image Choice: 0 - %d\n",
-            series.images.size() - 1);
+            (unsigned int)series.images.size() - 1);
         return OFFalse;
     } else {
       image = series.images.at( arg );
