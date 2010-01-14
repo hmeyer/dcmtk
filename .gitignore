@@ -4,6 +4,7 @@
 !/*/tests/[a-z]*.*
 *.o
 *.a
+*.swp
 backup*.tgz
 *.deb
 /*/Makefile
