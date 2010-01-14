@@ -244,27 +244,28 @@ private:
         TI_DBEntry &db, DcmDataset *query,
         TI_GenericEntryCallbackFunction callbackFunction,
         TI_GenericCallbackStruct *callbackData);
-    OFBool TI_title(int arg, const char * /*cmdbuf*/ );
+    OFBool TI_title(int arg);
     OFBool TI_attachDB(TI_DBEntry &db);
-    OFBool TI_database(int arg, const char * /*cmdbuf*/ );
-    OFBool TI_echo(int arg, const char * /*cmdbuf*/ );
-    OFBool TI_quit(int arg, const char * /*cmdbuf*/ );
+    OFBool TI_database(int arg);
+    OFBool TI_filter( const string &cmdString );
+    OFBool TI_echo(int arg);
+    OFBool TI_quit();
     OFBool TI_actualizeStudies();
-    OFBool TI_study(int arg, const char * /*cmdbuf*/ );
+    OFBool TI_study(int arg);
     OFBool TI_actualizeSeries();
-    OFBool TI_series(int arg, const char * /*cmdbuf*/ );
+    OFBool TI_series(int arg);
     OFBool TI_actualizeImages();
-    OFBool TI_image(int arg, const char * /*cmdbuf*/ );
+    OFBool TI_image(int arg);
     OFBool TI_buildStudies(TI_DBEntry &db);
     OFBool TI_buildSeries(TI_DBEntry &db, TI_StudyEntry &study);
     OFBool TI_buildRemoteImages(TI_DBEntry &db, TI_StudyEntry &study, TI_SeriesEntry &series);
     OFBool TI_buildImages(TI_DBEntry &db, TI_StudyEntry &study, TI_SeriesEntry &series);
-    OFBool TI_sendStudy(int arg, const char * /*cmdbuf*/ );
-    OFBool TI_sendSeries(int arg, const char * /*cmdbuf*/ );
-    OFBool TI_sendImage(int arg, const char * /*cmdbuf*/ );
-    OFBool TI_send(int /*arg*/, const char *cmdbuf);
-    OFBool TI_shortHelp(int /*arg*/ , const char * /*cmdbuf*/ );
-    OFBool TI_help(int arg, const char * /*cmdbuf*/ );
+    OFBool TI_sendStudy(int arg);
+    OFBool TI_sendSeries(int arg);
+    OFBool TI_sendImage(int arg);
+    OFBool TI_send(const string &cmdString);
+    OFBool TI_shortHelp();
+    OFBool TI_help();
     OFBool TI_buildRemoteStudies(TI_DBEntry &db);
     OFBool TI_buildRemoteSeries(TI_DBEntry &db, TI_StudyEntry &study);
     OFBool TI_dbReadable(const string &dbTitle);
@@ -278,6 +279,9 @@ private:
     
     /// the CTN databases we know
     TI_DBEntry_List dbEntries;
+
+    /// current patient filter
+    string patientFilter;
     
     /// current peer to talk to
     string peerHostName;

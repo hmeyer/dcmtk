@@ -60,6 +60,9 @@ BEGIN_EXTERN_C
 #endif
 END_EXTERN_C
 
+const unsigned int MAX_STUDIES = 10;
+
+#include <sstream>
 #include <iostream>
 /* ========================================== helper functions ======================================== */
 
@@ -119,6 +122,27 @@ TI_destroyStudyEntries(TI_DBEntry &db)
 {
   db.studies.clear();
 }
+
+void splitCommand( const string &cmdString, string &cmd, string &param, int &paramAsInt ) {
+  param.clear(); paramAsInt = -1;
+  string::size_type p1 = cmdString.find_first_of(' ');
+  if (p1 != string::npos) { 
+    string::size_type p2 = cmdString.find_first_not_of(' ',p1);
+    if (p2 != string::npos) {
+      param = cmdString.substr(p2);
+      istringstream paramStream(param);
+      paramStream >> paramAsInt;
+    }
+    cmd = cmdString.substr(0,p1);
+  } else cmd = cmdString;
+}
+
+class PrefixMatchingString : public string {
+  public:
+    bool startsWith( const string &o ){
+      return this->compare(0, o.length(), o) == 0;
+    }
+};
 
 static void storeProgressCallback(void * /*callbackData*/,
     T_DIMSE_StoreProgress *progress,
@@ -238,7 +262,7 @@ static void printImageEntry(TI_ImageEntry &image)
     printf(IMAGEFORMAT, image.imageNumber, image.sopInstanceUID);
 }
 
-static void TI_buildStudyQuery(DcmDataset **query)
+static void TI_buildStudyQuery(DcmDataset **query, const string &queryparam)
 {
     if (*query != NULL) delete *query;
     *query = new DcmDataset;
@@ -250,7 +274,7 @@ static void TI_buildStudyQuery(DcmDataset **query)
     DU_putStringDOElement(*query, DCM_QueryRetrieveLevel, "STUDY");
     DU_putStringDOElement(*query, DCM_StudyInstanceUID, NULL);
     DU_putStringDOElement(*query, DCM_StudyID, NULL);
-    DU_putStringDOElement(*query, DCM_PatientsName, NULL);
+    DU_putStringDOElement(*query, DCM_PatientsName, queryparam.length()?queryparam.c_str():NULL);
     DU_putStringDOElement(*query, DCM_PatientID, NULL);
 }
 
@@ -366,7 +390,6 @@ OFBool
 TI_addStudyEntry(TI_DBEntry &db, DcmDataset *reply)
 {
     OFBool ok = OFTrue;
-
     TI_StudyEntry se;
     /* extract info from reply */
     ok = DU_getStringDOElement(reply, DCM_StudyInstanceUID, se.studyInstanceUID);
@@ -859,22 +882,23 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_remoteFindQuery(TI_DBEntry &db, DcmDa
 /* ====================================== TI USER INTERFACE ===================================== */
 
 
-OFBool DcmQueryRetrieveTelnetInitiator::TI_shortHelp(int /*arg*/ , const char * /*cmdbuf*/ )
+OFBool DcmQueryRetrieveTelnetInitiator::TI_shortHelp()
 {
-    printf("h)elp, t)itle, da)tabase, st)udy, ser)ies i)mage, di)splay, sen)d, e)cho, q)uit\n");
+    printf("h)elp, t)itle, da)tabase, f)ilter, st)udy, ser)ies i)mage, di)splay, sen)d, e)cho, q)uit\n");
     return OFTrue;
 }
 
-OFBool DcmQueryRetrieveTelnetInitiator::TI_help(int arg, const char * /*cmdbuf*/ )
+OFBool DcmQueryRetrieveTelnetInitiator::TI_help()
 {
     if (verbose) {
-        printf("TI_help: arg=%d\n", arg);
+        printf("TI_help:\n");
     }
     printf("Command Summary:\n");
     printf("help                list this summary\n");
     printf("?                   short help\n");
     printf("title [#]           list [set] current peer AE title\n");
     printf("database [#]        list [set] current database\n");
+    printf("filter [#]          show [set] current filter\n");
     printf("study [#]           list [set] current study\n");
     printf("series [#]          list [set] current series\n");
     printf("image [#]           list [set] current image\n");
@@ -888,7 +912,7 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_help(int arg, const char * /*cmdbuf*/
     return OFTrue;
 }
 
-OFBool DcmQueryRetrieveTelnetInitiator::TI_title(int arg, const char * /*cmdbuf*/ )
+OFBool DcmQueryRetrieveTelnetInitiator::TI_title(int arg)
 {
     const char *peer;
     int port;
@@ -966,7 +990,7 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_attachDB(TI_DBEntry &db)
     return OFTrue;
 }
 
-OFBool DcmQueryRetrieveTelnetInitiator::TI_database(int arg, const char * /*cmdbuf*/ )
+OFBool DcmQueryRetrieveTelnetInitiator::TI_database(int arg)
 {
     OFBool found = OFFalse;
 
@@ -1025,11 +1049,10 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_database(int arg, const char * /*cmdb
             }
         }
     }
-
     return OFTrue;
 }
 
-OFBool DcmQueryRetrieveTelnetInitiator::TI_echo(int arg, const char * /*cmdbuf*/ )
+OFBool DcmQueryRetrieveTelnetInitiator::TI_echo(int arg)
 {
     OFBool ok = OFTrue;
 
@@ -1053,10 +1076,10 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_echo(int arg, const char * /*cmdbuf*/
     return ok;
 }
 
-OFBool DcmQueryRetrieveTelnetInitiator::TI_quit(int arg, const char * /*cmdbuf*/ )
+OFBool DcmQueryRetrieveTelnetInitiator::TI_quit()
 {
     if (verbose) {
-        printf("TI_quit: arg=%d\n", arg);
+        printf("TI_quit:\n");
     }
     TI_detachAssociation(OFFalse);
     printf("Good Bye, Auf Wiedersehen, Au Revoir\n");
@@ -1072,16 +1095,29 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_actualizeStudies()
         return OFFalse;
 
     if (currentdb.studies.size() == 0) {
-        printf("No Studies in Database: %s\n", currentdb.title.c_str());
+        printf("No Studies in Database: %s", currentdb.title.c_str());
+        if (patientFilter.length()) printf(" (with filter \"%s\")", patientFilter.c_str());
+        printf("\n");
         return OFFalse;
     }
     if (currentdb.currentStudyIdx >= currentdb.studies.size())
       currentdb.currentStudyIdx = 0;
-    
     return OFTrue;
 }
 
-OFBool DcmQueryRetrieveTelnetInitiator::TI_study(int arg, const char * /*cmdbuf*/ )
+OFBool DcmQueryRetrieveTelnetInitiator::TI_filter( const string &cmdString )
+{
+    if (verbose) {
+        printf("TI_filter: arg=%s\n", cmdString.c_str());
+    }
+    patientFilter = cmdString;
+    if (!TI_actualizeStudies())
+        return OFFalse;
+    return OFTrue;
+}
+
+
+OFBool DcmQueryRetrieveTelnetInitiator::TI_study(int arg)
 {
     if (verbose) {
         printf("TI_study: arg=%d\n", arg);
@@ -1128,9 +1164,13 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_study(int arg, const char * /*cmdbuf*
         printf(" %2d) ", c++);
         printStudyEntry(*i);
     }
-
     printf("\n");
-    printf("%d Studies in Database: %s\n", currentdb.studies.size(), currentdb.title.c_str());
+    printf("Studies in Database: %s", currentdb.title.c_str());
+    if (patientFilter.length()) 
+      printf(" (with filter \"%s\")", patientFilter.c_str());
+    if (currentdb.studies.size()>=MAX_STUDIES)
+      printf("(showing only first %d)", MAX_STUDIES);
+    printf("\n");
     return OFTrue;
 }
 
@@ -1159,7 +1199,7 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_actualizeSeries()
     return OFTrue;
 }
 
-OFBool DcmQueryRetrieveTelnetInitiator::TI_series(int arg, const char * /*cmdbuf*/ )
+OFBool DcmQueryRetrieveTelnetInitiator::TI_series(int arg)
 {
     TI_DBEntry &currentdb = dbEntries.at( currentdbIdx );
     if (verbose) {
@@ -1250,7 +1290,7 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_actualizeImages()
     return OFTrue;
 }
 
-OFBool DcmQueryRetrieveTelnetInitiator::TI_image(int arg, const char * /*cmdbuf*/ )
+OFBool DcmQueryRetrieveTelnetInitiator::TI_image(int arg)
 {
     TI_DBEntry &currentdb = dbEntries.at( currentdbIdx );
     if (verbose) {
@@ -1309,7 +1349,7 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_image(int arg, const char * /*cmdbuf*
     return OFTrue;
 }
 
-OFBool DcmQueryRetrieveTelnetInitiator::TI_sendStudy(int arg, const char * /*cmdbuf*/ )
+OFBool DcmQueryRetrieveTelnetInitiator::TI_sendStudy(int arg)
 {
     OFBool ok = OFTrue;
     DcmDataset *query = NULL;
@@ -1397,7 +1437,7 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_sendStudy(int arg, const char * /*cmd
 }
 
 
-OFBool DcmQueryRetrieveTelnetInitiator::TI_sendSeries(int arg, const char * /*cmdbuf*/ )
+OFBool DcmQueryRetrieveTelnetInitiator::TI_sendSeries(int arg)
 {
     OFBool ok = OFTrue;
     DcmDataset *query = NULL;
@@ -1474,7 +1514,7 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_sendSeries(int arg, const char * /*cm
     return ok;
 }
 
-OFBool DcmQueryRetrieveTelnetInitiator::TI_sendImage(int arg, const char * /*cmdbuf*/ )
+OFBool DcmQueryRetrieveTelnetInitiator::TI_sendImage(int arg)
 {
     OFBool ok = OFTrue;
     DcmDataset *query = NULL;
@@ -1559,30 +1599,23 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_sendImage(int arg, const char * /*cmd
     return ok;
 }
 
-OFBool DcmQueryRetrieveTelnetInitiator::TI_send(int /*arg*/, const char *cmdbuf)
+OFBool DcmQueryRetrieveTelnetInitiator::TI_send(const string &cmdString)
 {
     OFBool ok = OFTrue;
-    char cmdarg[128];
-    int iarg;
-    int narg;
-    TI_DBEntry &currentdb = dbEntries.at( currentdbIdx );
-
-    if (currentdb.isRemoteDB) {
-        printf("Sorry, cannot send from remote DB\n");
+    if (dbEntries.at( currentdbIdx ).isRemoteDB) {
+        cout << "Sorry, cannot send from remote DB" << endl;
         return OFTrue;
     }
 
-    bzero(cmdarg, sizeof(cmdarg));
-
-    narg = sscanf(cmdbuf, "send %s %d", cmdarg, &iarg);
-    if (narg == 1)
-        iarg = -1;
-
-    if      (strncmp("st", cmdarg, strlen("st")) == 0) TI_sendStudy(iarg, cmdbuf);
-    else if (strncmp("se", cmdarg, strlen("se")) == 0) TI_sendSeries(iarg, cmdbuf);
-    else if (strncmp("i",  cmdarg, strlen("i"))  == 0) TI_sendImage(iarg, cmdbuf);
+    PrefixMatchingString cmd;
+    string param;
+    int paramAsInt=-1;
+    splitCommand(cmdString,cmd,param,paramAsInt);
+    if      (cmd.startsWith("st")) TI_sendStudy(paramAsInt);
+    else if (cmd.startsWith("se")) TI_sendSeries(paramAsInt);
+    else if (cmd.startsWith("i")) TI_sendImage(paramAsInt);
     else {
-        printf("What do you want to send? Type help for help\n");
+        cout << "What do you want to send? Type help for help" << endl;
     }
 
     return ok;
@@ -1590,9 +1623,6 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_send(int /*arg*/, const char *cmdbuf)
 
 void DcmQueryRetrieveTelnetInitiator::TI_userInput()
 {
-    char cmdBuf[1024];  /* can't have lines longer than this */
-    int arg;
-
     /* make the first database current */
     currentdbIdx = 0;
     TI_DBEntry &currentdb = dbEntries.at( currentdbIdx );
@@ -1600,41 +1630,37 @@ void DcmQueryRetrieveTelnetInitiator::TI_userInput()
     /* make the first peer title for this database current */
     currentPeerTitle = currentdb.peerTitles[0];
     /* open db */
-    TI_database(0, cmdBuf);
+    TI_database(0);
 
     TI_welcome();
-    printf("\n");
+    cout << endl;
 
     while (1) {
-        printf("%s->%s> ", currentdb.title.c_str(),
-            currentPeerTitle.c_str());
-        if (fgets(cmdBuf, 1024, stdin) == NULL) {
-            DcmQueryRetrieveOptions::errmsg("unexpected end of input\n");
-            return; /* give up */
-        }
+	cout << currentdb.title << "->" << currentPeerTitle << " ";
+	string input;
+	getline(cin, input);
 
-        DU_stripLeadingSpaces(cmdBuf);
-        if (strlen(cmdBuf) == 0)
-            continue; /* no input */
+	PrefixMatchingString cmd;
+	string parameter;
+	int paramterAsInt = -1;
 
-        if (sscanf(cmdBuf, "%*s %d", &arg) != 1) {
-            arg = -1;
-        }
-
-        /* find command parser */
-        if      (strncmp("h",  cmdBuf, strlen("h"))  == 0) TI_help(arg, cmdBuf);
-        else if (strncmp("?",  cmdBuf, strlen("?"))  == 0) TI_shortHelp(arg, cmdBuf);
-        else if (strncmp("t",  cmdBuf, strlen("t"))  == 0) TI_title(arg, cmdBuf);
-        else if (strncmp("da", cmdBuf, strlen("da")) == 0) TI_database(arg, cmdBuf);
-        else if (strncmp("st", cmdBuf, strlen("st")) == 0) TI_study(arg, cmdBuf);
-        else if (strncmp("ser",cmdBuf, strlen("ser"))== 0) TI_series(arg, cmdBuf);
-        else if (strncmp("i",  cmdBuf, strlen("i"))  == 0) TI_image(arg, cmdBuf);
-        else if (strncmp("send", cmdBuf, strlen("send")) == 0) TI_send(arg, cmdBuf);
-        else if (strncmp("ec", cmdBuf, strlen("ec")) == 0) TI_echo(arg, cmdBuf);
-        else if (strncmp("q",  cmdBuf, strlen("q"))  == 0) TI_quit(arg, cmdBuf);
-        else if (strncmp("exit", cmdBuf, strlen("exit")) == 0) TI_quit(arg, cmdBuf);
+	/* find command parser */
+	splitCommand( input, cmd, parameter, paramterAsInt );
+	
+        if      (cmd.startsWith("h")) TI_help();
+        else if (cmd.startsWith("?")) TI_shortHelp();
+        else if (cmd.startsWith("t")) TI_title(paramterAsInt);
+        else if (cmd.startsWith("da")) TI_database(paramterAsInt);
+        else if (cmd.startsWith("f")) TI_filter(parameter);
+        else if (cmd.startsWith("st")) TI_study(paramterAsInt);
+        else if (cmd.startsWith("ser")) TI_series(paramterAsInt);
+        else if (cmd.startsWith("i")) TI_image(paramterAsInt);
+        else if (cmd.startsWith("sen")) TI_send(parameter);
+        else if (cmd.startsWith("e")) TI_echo(paramterAsInt);
+        else if (cmd.startsWith("q")) TI_quit();
+        else if (cmd.startsWith("exit")) TI_quit();
         else {
-            printf("What do you want to do? Type help for help\n");
+            cout << "What do you want to do? Type help for help" << endl;
         }
     }
 }
@@ -1691,7 +1717,7 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_buildRemoteStudies(TI_DBEntry &db)
     TI_destroyStudyEntries(db);
 
     /* get all known studies */
-    TI_buildStudyQuery(&query);
+    TI_buildStudyQuery(&query, patientFilter);
 
     ok = TI_remoteFindQuery(db, query, TI_genericEntryCallback, &cbs);
 
@@ -1720,11 +1746,10 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_buildStudies(TI_DBEntry &db)
     TI_destroyStudyEntries(db);
 
     /* get all known studies */
-    TI_buildStudyQuery(&query);
+    TI_buildStudyQuery(&query, patientFilter);
 
     printf("Querying Database for Studies ...\n");
     db.lastQueryTime = time(NULL);
-
     dbcond = db.dbHandle->startFindRequest(
         UID_FINDStudyRootQueryRetrieveInformationModel, query, &dbStatus);
     if (dbcond.bad()) {
@@ -1734,8 +1759,8 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_buildStudies(TI_DBEntry &db)
     }
     
     dbStatus.deleteStatusDetail();
-
-    while (dbStatus.status() == STATUS_Pending) {
+    unsigned int c=0;
+    while (c++ < MAX_STUDIES && dbStatus.status() == STATUS_Pending) {
         dbcond = db.dbHandle->nextFindResponse(&reply, &dbStatus);
         if (dbcond.bad()) {
             DcmQueryRetrieveOptions::errmsg("TI_buildStudies: database error");
