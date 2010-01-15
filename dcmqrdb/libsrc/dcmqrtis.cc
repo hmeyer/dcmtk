@@ -64,27 +64,31 @@ const unsigned int MAX_STUDIES = 10;
 
 #include <sstream>
 #include <iostream>
-/* ========================================== helper functions ======================================== */
+#include <boost/format.hpp>
+#include <boost/scoped_ptr.hpp>
 
-OFBool TI_addStudyEntry(TI_DBEntry &db, DcmDataset *reply);
-OFBool TI_addSeriesEntry(TI_StudyEntry &study, DcmDataset *reply);
-OFBool TI_addImageEntry(TI_SeriesEntry &series, DcmDataset *reply);
-int TI_seriesCompare(const TI_SeriesEntry &a, const TI_SeriesEntry &b);
-int TI_imageCompare(const TI_ImageEntry &a, const TI_ImageEntry &b);
+typedef boost::scoped_ptr<DcmDataset> DcmDatasetPtr;
+
+/* ========================================== helper functions ======================================== */
+OFBool TI_addStudyEntry(TI_DBEntry &db, DcmDataset &reply);
+OFBool TI_addSeriesEntry(TI_StudyEntry &study, DcmDataset &reply);
+OFBool TI_addImageEntry(TI_SeriesEntry &series, DcmDataset &reply);
+bool operator<(const TI_ImageEntry &i1, const TI_ImageEntry &i2);
+bool operator<(const TI_SeriesEntry &s1, const TI_SeriesEntry &s2);
 
 void
-TI_getInfoFromDataset(DcmDataset *dset, DIC_PN patientsName, DIC_CS studyId,
+TI_getInfoFromDataset(DcmDataset &dset, DIC_PN patientsName, DIC_CS studyId,
     DIC_IS seriesNumber, DIC_CS modality, DIC_IS imageNumber)
 {
-    DU_getStringDOElement(dset, DCM_PatientsName, patientsName);
+    DU_getStringDOElement(&dset, DCM_PatientsName, patientsName);
     DU_stripLeadingAndTrailingSpaces(patientsName);
-    DU_getStringDOElement(dset, DCM_StudyID, studyId);
+    DU_getStringDOElement(&dset, DCM_StudyID, studyId);
     DU_stripLeadingAndTrailingSpaces(studyId);
-    DU_getStringDOElement(dset, DCM_SeriesNumber, seriesNumber);
+    DU_getStringDOElement(&dset, DCM_SeriesNumber, seriesNumber);
     DU_stripLeadingAndTrailingSpaces(seriesNumber);
-    DU_getStringDOElement(dset, DCM_Modality, modality);
+    DU_getStringDOElement(&dset, DCM_Modality, modality);
     DU_stripLeadingAndTrailingSpaces(modality);
-    DU_getStringDOElement(dset, DCM_InstanceNumber, imageNumber);
+    DU_getStringDOElement(&dset, DCM_InstanceNumber, imageNumber);
     DU_stripLeadingAndTrailingSpaces(imageNumber);
 }
 
@@ -101,7 +105,7 @@ TI_getInfoFromImage(char *imgFile, DIC_PN patientsName, DIC_CS studyId,
 
     DcmDataset *obj = dcmff.getDataset();
 
-    TI_getInfoFromDataset(obj, patientsName, studyId, seriesNumber,
+    TI_getInfoFromDataset(*obj, patientsName, studyId, seriesNumber,
         modality, imageNumber);
 }
 
@@ -206,7 +210,7 @@ static void findCallback(
     }
 
     /* call the callback function */
-    cbd->cbf(cbd->cbs, responseIdentifiers);
+    cbd->cbf(*cbd->cbs, *responseIdentifiers);
 
     /* responseIdentifers will be deleted in DIMSE_findUser() */
 }
@@ -239,20 +243,18 @@ static OFBool TI_detachDB(TI_DBEntry& db)
     return OFTrue;
 }
 
-#define STUDYFORMAT "%-30s %-12s %-12s\n"
+boost::format StudyFormat("%|-20.20s| %|8.8s| %|4.4s| %|8.8s| %|-20.20s| %|15.15s| %|15.15s|");
 
 static void printStudyEntry(TI_StudyEntry &study)
 {
-    printf(STUDYFORMAT, study.patientsName, study.patientID,
-      study.studyID);
+  cout << StudyFormat % study.patientsName % study.patientsDoB % study.numInstances % study.studyDate % study.studyDescr % study.patientID % study.studyID << endl;
 }
 
-#define SERIESFORMAT "%-6s %-8s %-s\n"
+boost::format SeriesFormat("%|5.5| %|-20.20s| %|8.8s| %|6.6s| %|-8.8s| %|-20.20s|");
 
 static void printSeriesEntry(TI_SeriesEntry &series)
 {
-    printf(SERIESFORMAT, series.seriesNumber,
-        series.modality, series.seriesInstanceUID);
+  cout << SeriesFormat % series.numInstances % series.descr % series.time % series.seriesNumber % series.modality % series.seriesInstanceUID << endl;
 }
 
 #define IMAGEFORMAT "%-5s %-s\n"
@@ -262,44 +264,51 @@ static void printImageEntry(TI_ImageEntry &image)
     printf(IMAGEFORMAT, image.imageNumber, image.sopInstanceUID);
 }
 
-static void TI_buildStudyQuery(DcmDataset **query, const string &queryparam)
+static void TI_buildStudyQuery(DcmDatasetPtr &query, const string &queryparam)
 {
-    if (*query != NULL) delete *query;
-    *query = new DcmDataset;
-    if (*query == NULL) {
+    query.reset( new DcmDataset );
+    if (!query) {
         DcmQueryRetrieveOptions::errmsg("Help, out of memory");
         return;
     }
 
-    DU_putStringDOElement(*query, DCM_QueryRetrieveLevel, "STUDY");
-    DU_putStringDOElement(*query, DCM_StudyInstanceUID, NULL);
-    DU_putStringDOElement(*query, DCM_StudyID, NULL);
-    DU_putStringDOElement(*query, DCM_PatientsName, queryparam.length()?queryparam.c_str():NULL);
-    DU_putStringDOElement(*query, DCM_PatientID, NULL);
+    DU_putStringDOElement(query.get(), DCM_QueryRetrieveLevel, "STUDY");
+    DU_putStringDOElement(query.get(), DCM_StudyInstanceUID, NULL);
+    DU_putStringDOElement(query.get(), DCM_StudyID, NULL);
+    DU_putStringDOElement(query.get(), DCM_PatientsBirthDate, NULL);
+    DU_putStringDOElement(query.get(), DCM_StudyDate, NULL);
+    DU_putStringDOElement(query.get(), DCM_StudyDescription, NULL);
+    DU_putStringDOElement(query.get(), DCM_NumberOfStudyRelatedInstances, NULL);
+    DU_putStringDOElement(query.get(), DCM_PatientsName, queryparam.length()?queryparam.c_str():NULL);
+    DU_putStringDOElement(query.get(), DCM_PatientID, NULL);
 }
 
-OFBool TI_genericEntryCallback(TI_GenericCallbackStruct *cbs, DcmDataset *reply)
+OFBool TI_genericEntryCallback(TI_GenericCallbackStruct &cbs, DcmDataset &reply)
 {
-    if (cbs->db) return TI_addStudyEntry(*cbs->db, reply);
-    if (cbs->study) return TI_addSeriesEntry(*cbs->study, reply);
-    if (cbs->series) return TI_addImageEntry(*cbs->series, reply);
+    if (cbs.db) return TI_addStudyEntry(*cbs.db, reply);
+    if (cbs.study) return TI_addSeriesEntry(*cbs.study, reply);
+    if (cbs.series) return TI_addImageEntry(*cbs.series, reply);
     return OFFalse;
 }
 
 OFBool
-TI_addSeriesEntry(TI_StudyEntry &study, DcmDataset *reply)
+TI_addSeriesEntry(TI_StudyEntry &study, DcmDataset &reply)
 {
     OFBool ok = OFTrue;
     TI_SeriesEntry series;
     /* extract info from reply */
-    ok = DU_getStringDOElement(reply, DCM_SeriesInstanceUID, series.seriesInstanceUID);
-    if (ok) ok = DU_getStringDOElement(reply, DCM_SeriesNumber, series.seriesNumber);
-    if (ok) ok = DU_getStringDOElement(reply, DCM_Modality, series.modality);
+    ok = DU_getStringDOElement(&reply, DCM_SeriesInstanceUID, series.seriesInstanceUID);
+    if (ok) ok = DU_getStringDOElement(&reply, DCM_SeriesNumber, series.seriesNumber);
+    if (ok) ok = DU_getStringDOElement(&reply, DCM_Modality, series.modality);
 
     if (!ok) {
         DcmQueryRetrieveOptions::errmsg("TI_addSeriesEntry: missing data in DB reply");
         return OFFalse;
     }
+    
+    reply.findAndGetOFString(DCM_NumberOfSeriesRelatedInstances, series.numInstances);
+    reply.findAndGetOFString(DCM_SeriesDescription, series.descr);
+    reply.findAndGetOFString(DCM_SeriesTime, series.time);
 
     DU_stripLeadingAndTrailingSpaces(series.seriesInstanceUID);
     DU_stripLeadingAndTrailingSpaces(series.seriesNumber);
@@ -312,38 +321,35 @@ TI_addSeriesEntry(TI_StudyEntry &study, DcmDataset *reply)
     return OFTrue;
 }
 
-int TI_seriesCompare(const TI_SeriesEntry &a, const TI_SeriesEntry &b)
+static void TI_buildSeriesQuery(DcmDatasetPtr &query, const TI_StudyEntry &study)
 {
-    return a.intSeriesNumber - b.intSeriesNumber;
-}
-
-static void TI_buildSeriesQuery(DcmDataset **query, const TI_StudyEntry &study)
-{
-    if (*query != NULL) delete *query;
-    *query = new DcmDataset;
-    if (*query == NULL) {
+    query.reset( new DcmDataset );
+    if (!query) {
         DcmQueryRetrieveOptions::errmsg("Help, out of memory");
         return;
     }
 
-    DU_putStringDOElement(*query, DCM_QueryRetrieveLevel, "SERIES");
-    DU_putStringDOElement(*query, DCM_StudyInstanceUID,
+    DU_putStringDOElement(query.get(), DCM_QueryRetrieveLevel, "SERIES");
+    DU_putStringDOElement(query.get(), DCM_StudyInstanceUID,
         study.studyInstanceUID);
-    DU_putStringDOElement(*query, DCM_SeriesInstanceUID, NULL);
-    DU_putStringDOElement(*query, DCM_Modality, NULL);
-    DU_putStringDOElement(*query, DCM_SeriesNumber, NULL);
+    DU_putStringDOElement(query.get(), DCM_SeriesInstanceUID, NULL);
+    DU_putStringDOElement(query.get(), DCM_Modality, NULL);
+    DU_putStringDOElement(query.get(), DCM_SeriesNumber, NULL);
+    DU_putStringDOElement(query.get(), DCM_NumberOfSeriesRelatedInstances, NULL);
+    DU_putStringDOElement(query.get(), DCM_SeriesDescription, NULL);
+    DU_putStringDOElement(query.get(), DCM_SeriesTime, NULL);
 }
 
 OFBool
-TI_addImageEntry(TI_SeriesEntry &series, DcmDataset *reply)
+TI_addImageEntry(TI_SeriesEntry &series, DcmDataset &reply)
 {
     OFBool ok = OFTrue;
     TI_ImageEntry image;
     
     /* extract info from reply */
-    ok = DU_getStringDOElement(reply, DCM_SOPInstanceUID,
+    ok = DU_getStringDOElement(&reply, DCM_SOPInstanceUID,
         image.sopInstanceUID);
-    if (ok) ok = DU_getStringDOElement(reply, DCM_InstanceNumber, image.imageNumber);
+    if (ok) ok = DU_getStringDOElement(&reply, DCM_InstanceNumber, image.imageNumber);
 
     if (!ok) {
         DcmQueryRetrieveOptions::errmsg("TI_addImageEntry: missing data in DB reply");
@@ -361,41 +367,49 @@ TI_addImageEntry(TI_SeriesEntry &series, DcmDataset *reply)
     return OFTrue;
 }
 
-int TI_imageCompare(const TI_ImageEntry &a, const TI_ImageEntry &b) 
-{
-    return a.intImageNumber - b.intImageNumber;
+bool operator<(const TI_ImageEntry &i1, const TI_ImageEntry &i2) {
+    return i1.intImageNumber - i2.intImageNumber;
 }
 
-static void TI_buildImageQuery(DcmDataset **query, TI_StudyEntry &study,
+bool operator<(const TI_SeriesEntry &s1, const TI_SeriesEntry &s2) {
+    return s1.intSeriesNumber - s2.intSeriesNumber;
+}
+
+
+static void TI_buildImageQuery(DcmDatasetPtr &query, TI_StudyEntry &study,
     TI_SeriesEntry &series)
 {
-    if (*query != NULL) delete *query;
-    *query = new DcmDataset;
-    if (*query == NULL) {
+    query.reset( new DcmDataset);
+    if (!query) {
         DcmQueryRetrieveOptions::errmsg("Help, out of memory!");
         return;
     }
 
-    DU_putStringDOElement(*query, DCM_QueryRetrieveLevel, "IMAGE");
-    DU_putStringDOElement(*query, DCM_StudyInstanceUID,
+    DU_putStringDOElement(query.get(), DCM_QueryRetrieveLevel, "IMAGE");
+    DU_putStringDOElement(query.get(), DCM_StudyInstanceUID,
         study.studyInstanceUID);
-    DU_putStringDOElement(*query, DCM_SeriesInstanceUID,
+    DU_putStringDOElement(query.get(), DCM_SeriesInstanceUID,
         series.seriesInstanceUID);
-    DU_putStringDOElement(*query, DCM_InstanceNumber, NULL);
-    DU_putStringDOElement(*query, DCM_SOPInstanceUID, NULL);
+    DU_putStringDOElement(query.get(), DCM_InstanceNumber, NULL);
+    DU_putStringDOElement(query.get(), DCM_SOPInstanceUID, NULL);
 }
 
 
 OFBool
-TI_addStudyEntry(TI_DBEntry &db, DcmDataset *reply)
+TI_addStudyEntry(TI_DBEntry &db, DcmDataset &reply)
 {
     OFBool ok = OFTrue;
     TI_StudyEntry se;
     /* extract info from reply */
-    ok = DU_getStringDOElement(reply, DCM_StudyInstanceUID, se.studyInstanceUID);
-    if (ok) ok = DU_getStringDOElement(reply, DCM_StudyID, se.studyID);
-    if (ok) ok = DU_getStringDOElement(reply, DCM_PatientsName, se.patientsName);
-    if (ok) ok = DU_getStringDOElement(reply, DCM_PatientID, se.patientID);
+    ok = DU_getStringDOElement(&reply, DCM_StudyInstanceUID, se.studyInstanceUID);
+    if (ok) ok = DU_getStringDOElement(&reply, DCM_StudyID, se.studyID);
+    if (ok) ok = DU_getStringDOElement(&reply, DCM_PatientsName, se.patientsName);
+    if (ok) ok = DU_getStringDOElement(&reply, DCM_PatientID, se.patientID);
+
+    reply.findAndGetOFString(DCM_PatientsBirthDate, se.patientsDoB);
+    reply.findAndGetOFString(DCM_StudyDate, se.studyDate);
+    reply.findAndGetOFString(DCM_StudyDescription, se.studyDescr);
+    reply.findAndGetOFString(DCM_NumberOfStudyRelatedInstances, se.numInstances);
 
     if (!ok) {
         DcmQueryRetrieveOptions::errmsg("TI_addStudyEntry: missing data in DB reply");
@@ -476,7 +490,7 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_detachAssociation(OFBool abortFlag)
     return OFTrue;
 }
 
-OFCondition DcmQueryRetrieveTelnetInitiator::addPresentationContexts(T_ASC_Parameters *params)
+OFCondition DcmQueryRetrieveTelnetInitiator::addPresentationContexts(T_ASC_Parameters &params)
 {
     OFCondition cond = EC_Normal;
 
@@ -529,14 +543,14 @@ OFCondition DcmQueryRetrieveTelnetInitiator::addPresentationContexts(T_ASC_Param
     /* first add presentation contexts for find and verification */
     for (i=0; i<(int)DIM_OF(abstractSyntaxes) && cond.good(); i++)
     {
-        cond = ASC_addPresentationContext( params, pid, abstractSyntaxes[i], transferSyntaxes, numTransferSyntaxes);
+        cond = ASC_addPresentationContext( &params, pid, abstractSyntaxes[i], transferSyntaxes, numTransferSyntaxes);
         pid += 2; /* only odd presentation context id's */
     }
 
     /* and then for all storage SOP classes */
     for (i=0; i<numberOfDcmLongSCUStorageSOPClassUIDs && cond.good(); i++)
     {
-      cond = ASC_addPresentationContext( params, pid, dcmLongSCUStorageSOPClassUIDs[i], transferSyntaxes, numTransferSyntaxes);
+      cond = ASC_addPresentationContext( &params, pid, dcmLongSCUStorageSOPClassUIDs[i], transferSyntaxes, numTransferSyntaxes);
       pid += 2;/* only odd presentation context id's */
     }
 
@@ -583,7 +597,7 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_attachAssociation()
     sprintf(presentationAddress, "%s:%d", peer, port);
     ASC_setPresentationAddresses(params, localHost, presentationAddress);
 
-    cond = addPresentationContexts(params);
+    cond = addPresentationContexts(*params);
     if (cond.bad()) {
         DcmQueryRetrieveOptions::errmsg("Help, cannot add presentation contexts:");
         DimseCondition::dump(cond);
@@ -679,14 +693,16 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_sendEcho()
     OFCondition cond = EC_Normal;
     DIC_US msgId;
     DIC_US status;
-    DcmDataset *stDetail = NULL;
+    DcmDatasetPtr stDetail;
 
     msgId = assoc->nextMsgID++;
     printf("[MsgID %d] Echo, ", msgId);
     fflush(stdout);
 
+    DcmDataset *tstd;
     cond = DIMSE_echoUser(assoc, msgId, blockMode_, dimse_timeout_,
-      &status, &stDetail);
+      &status, &tstd);
+    stDetail.reset(tstd);
 
     if (cond.good()) {
         printf("Complete [Status: %s]\n",
@@ -699,10 +715,9 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_sendEcho()
         ASC_destroyAssociation(&assoc);
 
     }
-    if (stDetail != NULL) {
+    if (stDetail) {
         printf("  Status Detail (should never be any):\n");
         stDetail->print(COUT);
-        delete stDetail;
     }
     return (cond.good());
 }
@@ -712,7 +727,7 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_storeImage(char *sopClass, char *sopI
 {
     OFCondition cond = EC_Normal;
     DIC_US msgId;
-    DcmDataset *stDetail = NULL;
+    DcmDatasetPtr stDetail;
     T_ASC_PresentationContextID presId;
     T_DIMSE_C_StoreRQ req;
     T_DIMSE_C_StoreRSP rsp;
@@ -779,10 +794,12 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_storeImage(char *sopClass, char *sopI
     req.DataSetType = DIMSE_DATASET_PRESENT;
     req.Priority = DIMSE_PRIORITY_MEDIUM;
 
+    DcmDataset *tstd;
     cond = DIMSE_storeUser(assoc, presId, &req,
        imgFile, NULL, storeProgressCallback, NULL,
         blockMode_, dimse_timeout_,
-        &rsp, &stDetail);
+        &rsp, &tstd);
+    stDetail.reset(tstd);
 
 #ifdef LOCK_IMAGE_FILES
      /* unlock image file */
@@ -800,10 +817,9 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_storeImage(char *sopClass, char *sopI
         ASC_dropAssociation(assoc);
         ASC_destroyAssociation(&assoc);
     }
-    if (stDetail != NULL) {
+    if (stDetail) {
         printf("  Status Detail:\n");
         stDetail->print(COUT);
-        delete stDetail;
     }
 
     return (cond.good());
@@ -814,9 +830,9 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_storeImage(char *sopClass, char *sopI
  * Find for remote DBs
  */
 
-OFBool DcmQueryRetrieveTelnetInitiator::TI_remoteFindQuery(TI_DBEntry &db, DcmDataset *query,
+OFBool DcmQueryRetrieveTelnetInitiator::TI_remoteFindQuery(TI_DBEntry &db, DcmDataset &query,
     TI_GenericEntryCallbackFunction callbackFunction,
-    TI_GenericCallbackStruct *callbackData)
+    TI_GenericCallbackStruct &callbackData)
 {
     OFBool ok = OFTrue;
     TI_LocalFindCallbackData cbd;
@@ -825,7 +841,7 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_remoteFindQuery(TI_DBEntry &db, DcmDa
     DIC_US        msgId;
     T_DIMSE_C_FindRQ  req;
     T_DIMSE_C_FindRSP rsp;
-    DcmDataset    *stDetail = NULL;
+    DcmDatasetPtr    stDetail;
 
     currentPeerTitle = db.title;
 
@@ -834,7 +850,7 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_remoteFindQuery(TI_DBEntry &db, DcmDa
     if (!ok) return OFFalse;
 
     cbd.cbf = callbackFunction;
-    cbd.cbs = callbackData;
+    cbd.cbs = &callbackData;
     cbd.verbose = verbose;
 
     /* which presentation context should be used */
@@ -849,7 +865,7 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_remoteFindQuery(TI_DBEntry &db, DcmDa
 
     if (verbose) {
         printf("Sending Find SCU RQ: MsgID %d:\n", msgId);
-        query->print(COUT);
+        query.print(COUT);
     }
 
     req.MessageID = msgId;
@@ -857,8 +873,10 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_remoteFindQuery(TI_DBEntry &db, DcmDa
      UID_FINDStudyRootQueryRetrieveInformationModel);
     req.Priority = DIMSE_PRIORITY_LOW;
 
-    cond = DIMSE_findUser(assoc, presId, &req, query,
-      findCallback, &cbd, blockMode_, dimse_timeout_, &rsp, &stDetail);
+    DcmDataset *tstd;
+    cond = DIMSE_findUser(assoc, presId, &req, &query,
+      findCallback, &cbd, blockMode_, dimse_timeout_, &rsp, &tstd);
+    stDetail.reset(tstd);
 
     if (cond.good()) {
         if (verbose) {
@@ -868,10 +886,9 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_remoteFindQuery(TI_DBEntry &db, DcmDa
         DcmQueryRetrieveOptions::errmsg("Find Failed:");
         DimseCondition::dump(cond);
     }
-    if (stDetail != NULL) {
+    if (stDetail) {
         printf("  Status Detail:\n");
         stDetail->print(COUT);
-        delete stDetail;
     }
 
     return cond.good();
@@ -1120,7 +1137,7 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_filter( const string &cmdString )
 OFBool DcmQueryRetrieveTelnetInitiator::TI_study(int arg)
 {
     if (verbose) {
-        printf("TI_study: arg=%d\n", arg);
+        cout << "TI_study: arg=" << arg << endl;
     }
 
     TI_DBEntry &currentdb = dbEntries.at( currentdbIdx );
@@ -1143,8 +1160,7 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_study(int arg)
     if (arg >= 0) {
         /* set current study */
         if (arg >= (int)currentdb.studies.size()) {
-            printf("ERROR: Study Choice: 0 - %d\n",
-                (unsigned int)currentdb.studies.size()- 1);
+            cout << "ERROR: Study Choice: 0 - " << currentdb.studies.size()- 1 << endl;
             return OFFalse;
         }
         currentdb.currentStudyIdx = arg;
@@ -1152,25 +1168,21 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_study(int arg)
     }
 
     /* list studies to user */
-    printf("      ");
-    printf(STUDYFORMAT, "Patient", "PatientID", "StudyID");
+    boost::format prefix("%|1| %|3|%|1| ");
+    cout << prefix % ' ' % ' ' % ' ';
+    cout << StudyFormat % "Patient" % "DoB" % "#Im" % "Date" % "Description" % "PatientID" % "StudyID" << endl;
     unsigned int c = 0;
     for (TI_StudyEntry_List::iterator i = currentdb.studies.begin(); i != currentdb.studies.end(); i++) {
-        if (currentdb.currentStudyIdx == c) {
-            printf("*");
-        } else {
-            printf(" ");
-        }
-        printf(" %2d) ", c++);
+	cout << prefix % ((currentdb.currentStudyIdx == c)?"*":"") % c++ % ')';
         printStudyEntry(*i);
     }
-    printf("\n");
-    printf("Studies in Database: %s", currentdb.title.c_str());
+    cout << endl;
+    cout << "Studies in Database: " << currentdb.title;
     if (patientFilter.length()) 
-      printf(" (with filter \"%s\")", patientFilter.c_str());
+      cout << " (with filter " << patientFilter << ")";
     if (currentdb.studies.size()>=MAX_STUDIES)
-      printf("(showing only first %d)", MAX_STUDIES);
-    printf("\n");
+      cout << "(showing only first " << MAX_STUDIES << ")";
+    cout << endl;
     return OFTrue;
 }
 
@@ -1203,7 +1215,7 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_series(int arg)
 {
     TI_DBEntry &currentdb = dbEntries.at( currentdbIdx );
     if (verbose) {
-        printf("TI_sseries: arg=%d\n", arg);
+        cout << "TI_sseries: arg=" << arg << endl;
     }
 
     if (currentdb.isRemoteDB) {
@@ -1234,26 +1246,20 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_series(int arg)
         currentdb.currentSeriesIdx = arg;
         return OFTrue;
     }
-
+    
     /* list series to user */
-    printf("      ");
-    printf(SERIESFORMAT, "Series", "Modality", "SeriesInstanceUID");
+    boost::format prefix("%|1| %|3|%|1| ");
+    cout << prefix % ' ' % ' ' % ' ';
+    cout << SeriesFormat % "#Im" % "Description" % "Time" % "Number" % "Modality" % "SeriesInstanceUID" << endl;
     unsigned int c = 0;
     for (TI_SeriesEntry_List::iterator i = study.series.begin(); i != study.series.end(); i++) {
-        if (currentdb.currentSeriesIdx == c) {
-            printf("*");
-        } else {
-            printf(" ");
-        }
-        printf(" %2d) ", c++);
-        printSeriesEntry(*i);
+	cout << prefix % ((currentdb.currentSeriesIdx == c)?"*":"") % c++ % ')';
+	printSeriesEntry(*i);
     }
 
-    printf("\n");
-    printf("%d Series in StudyID %s,\n",
-        (unsigned int)study.series.size(), study.studyID);
-    printf("  Patient: %s (Database: %s)\n",
-        study.patientsName, currentdb.title.c_str());
+    cout << endl;
+    cout << study.series.size() << " Series in StudyID " << study.studyID << endl;
+    cout << "  Patient: " << study.patientsName << " (Database: " << currentdb.title << ")" << endl;
     return OFTrue;
 }
 
@@ -1352,7 +1358,7 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_image(int arg)
 OFBool DcmQueryRetrieveTelnetInitiator::TI_sendStudy(int arg)
 {
     OFBool ok = OFTrue;
-    DcmDataset *query = NULL;
+    DcmDatasetPtr query;
     OFCondition dbcond = EC_Normal;
     DcmQueryRetrieveDatabaseStatus dbStatus(STATUS_Pending);
     DIC_UI sopClass;
@@ -1399,17 +1405,16 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_sendStudy(int arg)
     if (!ok) return OFFalse;
 
     /* fabricate query */
-    query = new DcmDataset;
-    if (query == NULL) {
+    query.reset( new DcmDataset );
+    if (!query) {
         DcmQueryRetrieveOptions::errmsg("Help, out of memory");
         return OFFalse;
     }
-    DU_putStringDOElement(query, DCM_QueryRetrieveLevel, "STUDY");
-    DU_putStringDOElement(query, DCM_StudyInstanceUID, study.studyInstanceUID);
+    DU_putStringDOElement(query.get(), DCM_QueryRetrieveLevel, "STUDY");
+    DU_putStringDOElement(query.get(), DCM_StudyInstanceUID, study.studyInstanceUID);
 
     dbcond = currentdb.dbHandle->startMoveRequest(
-        UID_MOVEStudyRootQueryRetrieveInformationModel, query, &dbStatus);
-    delete query; query = NULL;
+        UID_MOVEStudyRootQueryRetrieveInformationModel, query.get(), &dbStatus);
     if (dbcond.bad()) {
         DcmQueryRetrieveOptions::errmsg("TI_sendStudy: cannot query database");
         return OFFalse;
@@ -1440,7 +1445,7 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_sendStudy(int arg)
 OFBool DcmQueryRetrieveTelnetInitiator::TI_sendSeries(int arg)
 {
     OFBool ok = OFTrue;
-    DcmDataset *query = NULL;
+    DcmDatasetPtr query;
     OFCondition dbcond = EC_Normal;
     DcmQueryRetrieveDatabaseStatus dbStatus(STATUS_Pending);
     DIC_UI sopClass;
@@ -1475,19 +1480,18 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_sendSeries(int arg)
     if (!ok) return OFFalse;
 
     /* fabricate query */
-    query = new DcmDataset;
-    if (query == NULL) {
+    query.reset( new DcmDataset);
+    if (!query) {
         DcmQueryRetrieveOptions::errmsg("Help, out of memory");
         return OFFalse;
     }
-    DU_putStringDOElement(query, DCM_QueryRetrieveLevel, "SERIES");
-    DU_putStringDOElement(query, DCM_StudyInstanceUID, study.studyInstanceUID);
-    DU_putStringDOElement(query, DCM_SeriesInstanceUID,
+    DU_putStringDOElement(query.get(), DCM_QueryRetrieveLevel, "SERIES");
+    DU_putStringDOElement(query.get(), DCM_StudyInstanceUID, study.studyInstanceUID);
+    DU_putStringDOElement(query.get(), DCM_SeriesInstanceUID,
         series.seriesInstanceUID);
 
     dbcond = currentdb.dbHandle->startMoveRequest(
-        UID_MOVEStudyRootQueryRetrieveInformationModel, query, &dbStatus);
-    delete query; query = NULL;
+        UID_MOVEStudyRootQueryRetrieveInformationModel, query.get(), &dbStatus);
     if (dbcond.bad()) {
         DcmQueryRetrieveOptions::errmsg("TI_sendSeries: cannot query database");
         return OFFalse;
@@ -1517,7 +1521,7 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_sendSeries(int arg)
 OFBool DcmQueryRetrieveTelnetInitiator::TI_sendImage(int arg)
 {
     OFBool ok = OFTrue;
-    DcmDataset *query = NULL;
+    DcmDatasetPtr query;
     OFCondition dbcond = EC_Normal;
     DcmQueryRetrieveDatabaseStatus dbStatus(STATUS_Pending);
     DIC_UI sopClass;
@@ -1553,21 +1557,20 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_sendImage(int arg)
     if (!ok) return OFFalse;
 
     /* fabricate query */
-    query = new DcmDataset;
-    if (query == NULL) {
+    query.reset( new DcmDataset );
+    if (!query) {
         DcmQueryRetrieveOptions::errmsg("Help, out of memory");
         return OFFalse;
     }
-    DU_putStringDOElement(query, DCM_QueryRetrieveLevel, "IMAGE");
-    DU_putStringDOElement(query, DCM_StudyInstanceUID, study.studyInstanceUID);
-    DU_putStringDOElement(query, DCM_SeriesInstanceUID,
+    DU_putStringDOElement(query.get(), DCM_QueryRetrieveLevel, "IMAGE");
+    DU_putStringDOElement(query.get(), DCM_StudyInstanceUID, study.studyInstanceUID);
+    DU_putStringDOElement(query.get(), DCM_SeriesInstanceUID,
         series.seriesInstanceUID);
-    DU_putStringDOElement(query, DCM_SOPInstanceUID,
+    DU_putStringDOElement(query.get(), DCM_SOPInstanceUID,
         image.sopInstanceUID);
 
     dbcond = currentdb.dbHandle->startMoveRequest(
-        UID_MOVEStudyRootQueryRetrieveInformationModel, query, &dbStatus);
-    delete query; query = NULL;
+        UID_MOVEStudyRootQueryRetrieveInformationModel, query.get(), &dbStatus);
     if (dbcond.bad()) {
         DcmQueryRetrieveOptions::errmsg("TI_sendImage: cannot query database");
         return OFFalse;
@@ -1708,7 +1711,7 @@ time_t DcmQueryRetrieveTelnetInitiator::TI_dbModifyTime(const string &dbTitle)
 OFBool DcmQueryRetrieveTelnetInitiator::TI_buildRemoteStudies(TI_DBEntry &db)
 {
     TI_GenericCallbackStruct cbs;
-    DcmDataset *query = NULL;
+    DcmDatasetPtr query;
     OFBool ok = OFTrue;
 
     cbs.db = &db;
@@ -1717,11 +1720,9 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_buildRemoteStudies(TI_DBEntry &db)
     TI_destroyStudyEntries(db);
 
     /* get all known studies */
-    TI_buildStudyQuery(&query, patientFilter);
+    TI_buildStudyQuery(query, patientFilter);
 
-    ok = TI_remoteFindQuery(db, query, TI_genericEntryCallback, &cbs);
-
-    delete query;
+    ok = TI_remoteFindQuery(db, *query, TI_genericEntryCallback, cbs);
 
     return ok;
 }
@@ -1730,8 +1731,8 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_buildStudies(TI_DBEntry &db)
 {
     OFCondition dbcond = EC_Normal;
     DcmQueryRetrieveDatabaseStatus dbStatus(STATUS_Pending);
-    DcmDataset *query = NULL;
-    DcmDataset *reply = NULL;
+    DcmDatasetPtr query;
+    DcmDatasetPtr reply;
 
     if (db.isRemoteDB) {
         return TI_buildRemoteStudies(db);
@@ -1746,34 +1747,31 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_buildStudies(TI_DBEntry &db)
     TI_destroyStudyEntries(db);
 
     /* get all known studies */
-    TI_buildStudyQuery(&query, patientFilter);
+    TI_buildStudyQuery(query, patientFilter);
 
     printf("Querying Database for Studies ...\n");
     db.lastQueryTime = time(NULL);
     dbcond = db.dbHandle->startFindRequest(
-        UID_FINDStudyRootQueryRetrieveInformationModel, query, &dbStatus);
+        UID_FINDStudyRootQueryRetrieveInformationModel, query.get(), &dbStatus);
     if (dbcond.bad()) {
         DcmQueryRetrieveOptions::errmsg("TI_buildStudies: cannot query database");
-        delete query;
         return OFFalse;
     }
     
     dbStatus.deleteStatusDetail();
     unsigned int c=0;
     while (c++ < MAX_STUDIES && dbStatus.status() == STATUS_Pending) {
-        dbcond = db.dbHandle->nextFindResponse(&reply, &dbStatus);
+	DcmDataset *tr;
+        dbcond = db.dbHandle->nextFindResponse(&tr, &dbStatus);
+	reply.reset(tr);
         if (dbcond.bad()) {
             DcmQueryRetrieveOptions::errmsg("TI_buildStudies: database error");
             return OFFalse;
         }
         if (dbStatus.status() == STATUS_Pending) {
-            TI_addStudyEntry(db, reply);
-            delete reply;
-            reply = NULL;
+            TI_addStudyEntry(db, *reply);
         }
     }
-
-    delete query;
 
     return OFTrue;
 }
@@ -1786,7 +1784,7 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_buildStudies(TI_DBEntry &db)
 OFBool DcmQueryRetrieveTelnetInitiator::TI_buildRemoteSeries(TI_DBEntry &db, TI_StudyEntry &study)
 {
     TI_GenericCallbackStruct cbs;
-    DcmDataset *query = NULL;
+    DcmDatasetPtr query;
     OFBool ok = OFTrue;
 
     cbs.db = NULL;
@@ -1795,11 +1793,9 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_buildRemoteSeries(TI_DBEntry &db, TI_
     TI_destroySeriesEntries(study);
 
     /* get all known studies */
-    TI_buildSeriesQuery(&query, study);
+    TI_buildSeriesQuery(query, study);
 
-    ok = TI_remoteFindQuery(db, query, TI_genericEntryCallback, &cbs);
-
-    delete query;
+    ok = TI_remoteFindQuery(db, *query, TI_genericEntryCallback, cbs);
 
     return ok;
 }
@@ -1808,8 +1804,8 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_buildSeries(TI_DBEntry &db, TI_StudyE
 {
     OFCondition dbcond = EC_Normal;
     DcmQueryRetrieveDatabaseStatus dbStatus(STATUS_Pending);
-    DcmDataset *query = NULL;
-    DcmDataset *reply = NULL;
+    DcmDatasetPtr query;
+    DcmDatasetPtr reply;
 
     if (db.isRemoteDB) {
         return TI_buildRemoteSeries(db, study);
@@ -1824,44 +1820,34 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_buildSeries(TI_DBEntry &db, TI_StudyE
     TI_destroySeriesEntries(study);
 
     /* get all known series for this study */
-    TI_buildSeriesQuery(&query, study);
+    TI_buildSeriesQuery(query, study);
 
     printf("Querying Database for Series ...\n");
     study.lastQueryTime = time(NULL);
 
     dbcond = db.dbHandle->startFindRequest(
-        UID_FINDStudyRootQueryRetrieveInformationModel, query, &dbStatus);
+        UID_FINDStudyRootQueryRetrieveInformationModel, query.get(), &dbStatus);
     if (dbcond.bad()) {
         DcmQueryRetrieveOptions::errmsg("TI_buildSeries: cannot query database");
-        delete query; query = NULL;
         return OFFalse;
     }
     
     dbStatus.deleteStatusDetail();
 
     while (dbStatus.status() == STATUS_Pending) {
-        dbcond = db.dbHandle->nextFindResponse(&reply, &dbStatus);
+	DcmDataset *tr;
+        dbcond = db.dbHandle->nextFindResponse(&tr, &dbStatus);
+	reply.reset(tr);
         if (dbcond.bad()) {
             DcmQueryRetrieveOptions::errmsg("TI_buildSeries: database error");
             return OFFalse;
         }
-        if (dbStatus.status() == STATUS_Pending) {
-            TI_addSeriesEntry(study, reply);
-            delete reply;
-            reply = NULL;
-        }
+        if (dbStatus.status() == STATUS_Pending)
+            TI_addSeriesEntry(study, *reply);
     }
-
-    delete query;
-    query = NULL;
-
-    if (study.series.size() > 0) {
-        /* sort the seriesinto assending series number order */
-	std::sort(study.series.begin(), study.series.end(), TI_seriesCompare);
-//        qsort(study->series, study->seriesCount, sizeof(study->series[0]),
-//              TI_seriesCompare);
-    }
-
+cerr << __FUNCTION__ << " (" << __FILE__ << ":" << __LINE__ << ") starting sort" << endl;
+    std::sort(study.series.begin(), study.series.end());
+cerr << __FUNCTION__ << " (" << __FILE__ << ":" << __LINE__ << ") ending sort" << endl;
     return OFTrue;
 }
 
@@ -1873,7 +1859,7 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_buildSeries(TI_DBEntry &db, TI_StudyE
 OFBool DcmQueryRetrieveTelnetInitiator::TI_buildRemoteImages(TI_DBEntry &db, TI_StudyEntry &study, TI_SeriesEntry &series)
 {
     TI_GenericCallbackStruct cbs;
-    DcmDataset *query = NULL;
+    DcmDatasetPtr query;
     OFBool ok = OFTrue;
 
     cbs.db = NULL;
@@ -1882,11 +1868,9 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_buildRemoteImages(TI_DBEntry &db, TI_
     TI_destroyImageEntries(series);
 
     /* get all known studies */
-    TI_buildImageQuery(&query, study, series);
+    TI_buildImageQuery(query, study, series);
 
-    ok = TI_remoteFindQuery(db, query, TI_genericEntryCallback, &cbs);
-
-    delete query;
+    ok = TI_remoteFindQuery(db, *query, TI_genericEntryCallback, cbs);
 
     return ok;
 }
@@ -1895,8 +1879,8 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_buildImages(TI_DBEntry &db, TI_StudyE
 {
     OFCondition dbcond = EC_Normal;
     DcmQueryRetrieveDatabaseStatus dbStatus(STATUS_Pending);
-    DcmDataset *query = NULL;
-    DcmDataset *reply = NULL;
+    DcmDatasetPtr query;
+    DcmDatasetPtr reply;
 
     if (db.isRemoteDB) {
         return TI_buildRemoteImages(db, study, series);
@@ -1911,7 +1895,7 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_buildImages(TI_DBEntry &db, TI_StudyE
     TI_destroyImageEntries(series);
 
     /* get all known images in current series */
-    TI_buildImageQuery(&query, study, series);
+    TI_buildImageQuery(query, study, series);
 
     if (verbose) {
         printf("QUERY OBJECT:\n");
@@ -1922,15 +1906,16 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_buildImages(TI_DBEntry &db, TI_StudyE
     series.lastQueryTime = time(NULL);
 
     dbcond = db.dbHandle->startFindRequest(
-        UID_FINDStudyRootQueryRetrieveInformationModel, query, &dbStatus);
-    delete query; query = NULL;
+        UID_FINDStudyRootQueryRetrieveInformationModel, query.get(), &dbStatus);
     if (dbcond.bad()) {
         DcmQueryRetrieveOptions::errmsg("TI_buildImages: cannot query database");
         return OFFalse;
     }
 
     while (dbStatus.status() == STATUS_Pending) {
-        dbcond = db.dbHandle->nextFindResponse(&reply, &dbStatus);
+	DcmDataset *tr;
+        dbcond = db.dbHandle->nextFindResponse(&tr, &dbStatus);
+	reply.reset(tr);
         if (dbcond.bad()) {
             DcmQueryRetrieveOptions::errmsg("TI_buildImages: database error");
             return OFFalse;
@@ -1940,16 +1925,12 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_buildImages(TI_DBEntry &db, TI_StudyE
                 printf("REPLY OBJECT:\n");
                 reply->print(COUT);
             }
-            TI_addImageEntry(series, reply);
-            delete reply; reply = NULL;
+            TI_addImageEntry(series, *reply);
         }
     }
-
-    if (series.images.size() > 0) {
-        /* sort the images into assending image number order */
-	std::sort( series.images.begin(), series.images.end(), TI_imageCompare);
-    }
-
+cerr << __FUNCTION__ << " (" << __FILE__ << ":" << __LINE__ << ") starting sort" << endl;
+    std::sort( series.images.begin(), series.images.end());
+cerr << __FUNCTION__ << " (" << __FILE__ << ":" << __LINE__ << ") ending sort" << endl;
     return OFTrue;
 }
 

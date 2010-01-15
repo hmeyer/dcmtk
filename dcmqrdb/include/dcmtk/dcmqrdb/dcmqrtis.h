@@ -47,6 +47,7 @@
 #include <vector>
 #include <string>
 
+
 using namespace std;
 
 class DcmQueryRetrieveDatabaseHandle;
@@ -71,7 +72,7 @@ struct TI_ImageEntry
     DIC_UI  sopInstanceUID;
     DIC_IS  imageNumber;
     int   intImageNumber;
-} ;
+};
 
 typedef vector< TI_ImageEntry > TI_ImageEntry_List;
 
@@ -81,6 +82,9 @@ struct TI_SeriesEntry
     DIC_IS  seriesNumber;
     int   intSeriesNumber;
     DIC_CS  modality;
+    OFString numInstances;
+    OFString descr;
+    OFString time;
     TI_ImageEntry_List images;
 
     time_t lastQueryTime; /* time we last queried db */
@@ -92,7 +96,11 @@ struct TI_StudyEntry
 {
     DIC_UI  studyInstanceUID;
     DIC_CS  studyID;
+    OFString  studyDate;
+    OFString  studyDescr;
     DIC_PN  patientsName;
+    OFString  patientsDoB;
+    OFString numInstances;
     DIC_LO  patientID;
     TI_SeriesEntry_List series;
     time_t lastQueryTime; /* time we last queried db */
@@ -128,7 +136,7 @@ struct TI_GenericCallbackStruct
     TI_SeriesEntry *series;
 };
 
-typedef OFBool (*TI_GenericEntryCallbackFunction)(TI_GenericCallbackStruct *cbstruct, DcmDataset *reply);
+typedef OFBool (*TI_GenericEntryCallbackFunction)(TI_GenericCallbackStruct &cbstruct, DcmDataset &reply);
 
 /** this class provides the functionality of the telnet initiator application
  */
@@ -241,9 +249,9 @@ private:
     OFBool TI_sendEcho();
     OFBool TI_storeImage(char *sopClass, char *sopInstance, char * imgFile);
     OFBool TI_remoteFindQuery(
-        TI_DBEntry &db, DcmDataset *query,
+        TI_DBEntry &db, DcmDataset &query,
         TI_GenericEntryCallbackFunction callbackFunction,
-        TI_GenericCallbackStruct *callbackData);
+        TI_GenericCallbackStruct &callbackData);
     OFBool TI_title(int arg);
     OFBool TI_attachDB(TI_DBEntry &db);
     OFBool TI_database(int arg);
@@ -270,7 +278,7 @@ private:
     OFBool TI_buildRemoteSeries(TI_DBEntry &db, TI_StudyEntry &study);
     OFBool TI_dbReadable(const string &dbTitle);
     time_t TI_dbModifyTime(const string &dbTitle);
-    OFCondition addPresentationContexts(T_ASC_Parameters *params);
+    OFCondition addPresentationContexts(T_ASC_Parameters &params);
 
     OFBool findDBPeerTitles(
       const string &configFileName,
