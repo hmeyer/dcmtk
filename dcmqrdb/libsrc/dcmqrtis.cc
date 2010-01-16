@@ -60,7 +60,7 @@ BEGIN_EXTERN_C
 #endif
 END_EXTERN_C
 
-const unsigned int MAX_STUDIES = 10;
+const unsigned int MAX_STUDIES = 20;
 
 #include <sstream>
 #include <iostream>
@@ -1173,7 +1173,8 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_study(int arg)
     cout << StudyFormat % "Patient" % "DoB" % "#Im" % "Date" % "Description" % "PatientID" % "StudyID" << endl;
     unsigned int c = 0;
     for (TI_StudyEntry_List::iterator i = currentdb.studies.begin(); i != currentdb.studies.end(); i++) {
-	cout << prefix % ((currentdb.currentStudyIdx == c)?"*":"") % c++ % ')';
+	cout << prefix % ((currentdb.currentStudyIdx == c)?"*":"") % c % ')';
+	c++;
         printStudyEntry(*i);
     }
     cout << endl;
@@ -1253,7 +1254,8 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_series(int arg)
     cout << SeriesFormat % "#Im" % "Description" % "Time" % "Number" % "Modality" % "SeriesInstanceUID" << endl;
     unsigned int c = 0;
     for (TI_SeriesEntry_List::iterator i = study.series.begin(); i != study.series.end(); i++) {
-	cout << prefix % ((currentdb.currentSeriesIdx == c)?"*":"") % c++ % ')';
+	cout << prefix % ((currentdb.currentSeriesIdx == c)?"*":"") % c % ')';
+	c++;
 	printSeriesEntry(*i);
     }
 
