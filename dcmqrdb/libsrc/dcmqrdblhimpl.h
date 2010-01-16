@@ -84,10 +84,12 @@ class DcmQRDBLHImpl { // TODO: implement Singleton based IndexWriter and IndexSe
   scoped_ptr<IndexSearcher> indexsearcher;
   scoped_ptr<Document> imageDoc;
   scoped_ptr<Hits> findResponseHits;
+  scoped_ptr<BooleanQuery> findRequest;
   unsigned int findResponseHitCounter;
   TagListType findRequestList;
   std::string queryLevelString;
   scoped_ptr<Hits> moveResponseHits;
+  scoped_ptr<BooleanQuery> moveRequest;
   unsigned int moveResponseHitCounter;
   const DcmQRLuceneIndexType indexType;
 

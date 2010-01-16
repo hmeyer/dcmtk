@@ -118,6 +118,7 @@ OFCondition DcmQueryRetrieveLuceneIndexHandle::cancelMoveRequest(DcmQueryRetriev
 dbdebug(1, "%s: start (line %i)", __FUNCTION__, __LINE__) ;
   impl->moveResponseHitCounter = 0;
   impl->moveResponseHits.reset(NULL);
+  impl->moveRequest.reset(NULL);
   status->setStatus(STATUS_MOVE_Cancel_SubOperationsTerminatedDueToCancelIndication);
   return (EC_Normal) ;        
 }
@@ -270,7 +271,8 @@ dbdebug(1, "%s: start (line %i)", __FUNCTION__, __LINE__) ;
   }
     
   // Lucene Query
-  BooleanQuery baseQuery;
+  impl->moveRequest.reset(new BooleanQuery);
+  BooleanQuery &baseQuery = *impl->moveRequest;
   // only look for image level objects
   baseQuery.add( new TermQuery( new Term( FieldNameDocumentDicomLevel.c_str(), ImageLevelLuceneString.c_str() ) ), BooleanClause::MUST );
 
@@ -354,6 +356,7 @@ dbdebug(1, "%s: start (line %i)", __FUNCTION__, __LINE__) ;
   impl->findRequestList.clear();
   impl->findResponseHitCounter = 0;
   impl->findResponseHits.reset(NULL);
+  impl->findRequest.reset(NULL);
   status->setStatus(STATUS_FIND_Cancel_MatchingTerminatedDueToCancelRequest);
   return (EC_Normal) ;    
 }
@@ -478,7 +481,8 @@ dbdebug(1, "%s: start (line %i)", __FUNCTION__, __LINE__) ;
   }
 
   // Lucene Query
-  BooleanQuery boolQuery;
+  impl->findRequest.reset(new BooleanQuery);
+  BooleanQuery &boolQuery = *impl->findRequest;
   Lucene_LEVEL baseLevel = PATIENT_LEVEL;
   if (rootLevel == STUDY_ROOT) baseLevel = STUDY_LEVEL;
   Lucene_LEVEL maxLevel = IMAGE_LEVEL;
