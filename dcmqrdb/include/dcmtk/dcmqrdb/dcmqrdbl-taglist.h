@@ -166,6 +166,7 @@ static DcmQRLuceneTagListType DcmQRLuceneTagList = (boost::assign::list_of(
   Lucene_Entry( DCM_StudyInstanceUID,                      STUDY_LEVEL,    Lucene_Entry::UNIQUE_KEY,     Lucene_Entry::UID_CLASS,    Lucene_Entry::UID_TYPE    ),
   Lucene_Entry( DCM_SeriesInstanceUID,                     SERIE_LEVEL,    Lucene_Entry::UNIQUE_KEY,     Lucene_Entry::UID_CLASS,    Lucene_Entry::UID_TYPE    ),
   Lucene_Entry( DCM_SOPInstanceUID,                        IMAGE_LEVEL,    Lucene_Entry::UNIQUE_KEY,     Lucene_Entry::UID_CLASS,    Lucene_Entry::UID_TYPE    ),
+  Lucene_Entry( DCM_TransferSyntaxUID,                     IMAGE_LEVEL,    Lucene_Entry::REQUIRED_KEY,   Lucene_Entry::UID_CLASS,    Lucene_Entry::UID_TYPE    ),
   Lucene_Entry( DCM_PatientsSex,                           PATIENT_LEVEL,  Lucene_Entry::OPTIONAL_KEY,   Lucene_Entry::STRING_CLASS, Lucene_Entry::KEYWORD_TYPE),
   Lucene_Entry( DCM_EthnicGroup,                           PATIENT_LEVEL,  Lucene_Entry::OPTIONAL_KEY,   Lucene_Entry::STRING_CLASS, Lucene_Entry::KEYWORD_TYPE),
   Lucene_Entry( DCM_PatientsSize,                          STUDY_LEVEL,    Lucene_Entry::OPTIONAL_KEY,   Lucene_Entry::OTHER_CLASS,  Lucene_Entry::KEYWORD_TYPE),
