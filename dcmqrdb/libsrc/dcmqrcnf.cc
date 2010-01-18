@@ -224,11 +224,15 @@ int DcmQueryRetrieveConfig::readConfigLines(FILE *cnffp)
         value[256],       /* parameter value */
         *valueptr;        /* pointer to value list */
    char *c;
+   char *fgetsResult;
    
-   while (!feof(cnffp)) {
-      fgets(rcline, sizeof(rcline), cnffp); /* read line in configuration file */
+   do {
+      fgetsResult = fgets(rcline, sizeof(rcline), cnffp); /* read line in configuration file */
       lineno++;
-      if (feof(cnffp)) continue;
+      if (fgetsResult == NULL) { /* error or eof */
+	if (ferror(cnffp)) error = 1;
+	continue; 
+      }
       if (rcline[0] == '#' || rcline[0] == 10 || rcline[0] == 13)
          continue;        /* comment or blank line */
 
@@ -340,7 +344,7 @@ int DcmQueryRetrieveConfig::readConfigLines(FILE *cnffp)
          panic("Unknown mnemonic \"%s\" in configuration file, line %d", mnemonic, lineno);
          error = 1;
       }
-   }
+   } while (fgetsResult != NULL);
 
    return(error ? 0 : 1);
 }
@@ -356,11 +360,15 @@ int DcmQueryRetrieveConfig::readHostTable(FILE *cnffp, int *lineno)
         value[256],       /* parameter value */
         *lineptr;         /* pointer to line */
    DcmQueryRetrieveConfigHostEntry *helpentry;
-
-   while (!feof(cnffp)) {
-      fgets(rcline, sizeof(rcline), cnffp); /* read line in configuration file */
+   char *fgetsResult;
+   
+   do {
+      fgetsResult = fgets(rcline, sizeof(rcline), cnffp); /* read line in configuration file */
       (*lineno)++;
-      if (feof(cnffp)) continue;
+      if (fgetsResult == NULL) { /* error or eof */
+	if (ferror(cnffp)) error = 1;
+	continue; 
+      }
       if (rcline[0] == '#' || rcline[0] == 10 || rcline[0] == 13)
          continue;        /* comment or blank line */
 
@@ -392,7 +400,7 @@ int DcmQueryRetrieveConfig::readHostTable(FILE *cnffp, int *lineno)
       CNF_HETable.HostEntries[CNF_HETable.noOfHostEntries - 1].noOfPeers = noOfPeers;
       if (!noOfPeers)
          error = 1;
-   }
+   } while( fgetsResult != NULL );
 
    if (!end) {
       error = 1;
@@ -412,10 +420,15 @@ int DcmQueryRetrieveConfig::readVendorTable(FILE *cnffp, int *lineno)
         value[256],       /* parameter value */
         *lineptr;         /* pointer to line */
    DcmQueryRetrieveConfigHostEntry *helpentry;
+   char *fgetsResult;
 
-   while (!feof(cnffp)) {
-      fgets(rcline, sizeof(rcline), cnffp); /* read line in configuration file */
+   do {
+      fgetsResult = fgets(rcline, sizeof(rcline), cnffp); /* read line in configuration file */
       (*lineno)++;
+      if (fgetsResult == NULL ) { /* error or eof */
+	if (ferror(cnffp)) error = 1;
+	continue;
+      }
       if (feof(cnffp)) continue;
       if (rcline[0] == '#' || rcline[0] == 10 || rcline[0] == 13)
          continue;        /* comment or blank line */
@@ -448,7 +461,7 @@ int DcmQueryRetrieveConfig::readVendorTable(FILE *cnffp, int *lineno)
       CNF_VendorTable.HostEntries[CNF_VendorTable.noOfHostEntries - 1].noOfPeers = noOfPeers;
       if (!noOfPeers)
          error = 1;
-   }
+   } while (fgetsResult != NULL);
 
    if (!end) {
       error = 1;
@@ -468,11 +481,15 @@ int DcmQueryRetrieveConfig::readAETable(FILE *cnffp, int *lineno)
         value[256],         /* parameter value */
         *lineptr;           /* pointer to line */
    DcmQueryRetrieveConfigAEEntry *helpentry;
+   char *fgetsResult;
 
-   while (!feof(cnffp)) {
-      fgets(rcline, sizeof(rcline), cnffp); /* read line in configuration file */
+   do {
+      fgetsResult = fgets(rcline, sizeof(rcline), cnffp); /* read line in configuration file */
       (*lineno)++;
-      if (feof(cnffp)) continue;
+      if ( fgetsResult == NULL ) { /* eof or error */
+	if (ferror( cnffp )) error = 1;
+	continue;
+      }
       if (rcline[0] == '#' || rcline[0] == 10 || rcline[0] == 13)
          continue;        /* comment or blank line */
 
@@ -506,7 +523,7 @@ int DcmQueryRetrieveConfig::readAETable(FILE *cnffp, int *lineno)
       CNF_Config.AEEntries[noOfAEEntries - 1].Peers = parsePeers(&lineptr, &CNF_Config.AEEntries[noOfAEEntries - 1].noOfPeers);
       if (!CNF_Config.AEEntries[noOfAEEntries - 1].noOfPeers)
          error = 1;
-   }
+   } while ( fgetsResult != NULL );
 
    if (!end) {
       error = 1;
