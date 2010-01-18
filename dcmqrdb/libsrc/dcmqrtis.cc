@@ -368,11 +368,11 @@ TI_addImageEntry(TI_SeriesEntry &series, DcmDataset &reply)
 }
 
 bool operator<(const TI_ImageEntry &i1, const TI_ImageEntry &i2) {
-    return i1.intImageNumber - i2.intImageNumber;
+    return i1.intImageNumber < i2.intImageNumber;
 }
 
 bool operator<(const TI_SeriesEntry &s1, const TI_SeriesEntry &s2) {
-    return s1.intSeriesNumber - s2.intSeriesNumber;
+    return s1.intSeriesNumber < s2.intSeriesNumber;
 }
 
 
@@ -1847,9 +1847,7 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_buildSeries(TI_DBEntry &db, TI_StudyE
         if (dbStatus.status() == STATUS_Pending)
             TI_addSeriesEntry(study, *reply);
     }
-cerr << __FUNCTION__ << " (" << __FILE__ << ":" << __LINE__ << ") starting sort" << endl;
     std::sort(study.series.begin(), study.series.end());
-cerr << __FUNCTION__ << " (" << __FILE__ << ":" << __LINE__ << ") ending sort" << endl;
     return OFTrue;
 }
 
@@ -1930,9 +1928,7 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_buildImages(TI_DBEntry &db, TI_StudyE
             TI_addImageEntry(series, *reply);
         }
     }
-cerr << __FUNCTION__ << " (" << __FILE__ << ":" << __LINE__ << ") starting sort" << endl;
     std::sort( series.images.begin(), series.images.end());
-cerr << __FUNCTION__ << " (" << __FILE__ << ":" << __LINE__ << ") ending sort" << endl;
     return OFTrue;
 }
 
