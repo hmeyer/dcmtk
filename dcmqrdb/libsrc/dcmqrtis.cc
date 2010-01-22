@@ -794,7 +794,7 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_storeImage(char *sopClass, char *sopI
     req.DataSetType = DIMSE_DATASET_PRESENT;
     req.Priority = DIMSE_PRIORITY_MEDIUM;
 
-    DcmDataset *tstd;
+    DcmDataset *tstd = NULL;
     cond = DIMSE_storeUser(assoc, presId, &req,
        imgFile, NULL, storeProgressCallback, NULL,
         blockMode_, dimse_timeout_,
@@ -821,7 +821,6 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_storeImage(char *sopClass, char *sopI
         printf("  Status Detail:\n");
         stDetail->print(COUT);
     }
-
     return (cond.good());
 }
 
