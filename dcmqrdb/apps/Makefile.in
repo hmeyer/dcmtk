@@ -28,7 +28,7 @@ dcmnetlib = -ldcmnet
 
 LOCALINCLUDES = $(dcmnetinc) $(dcmdatainc) $(ofstdinc)
 LIBDIRS = -L$(top_srcdir)/libsrc $(dcmnetlibdir) $(dcmdatalibdir) $(ofstdlibdir)
-LOCALLIBS = -ldcmqrdb -lclucene-core -lboost_system-mt -lboost_filesystem-mt $(dcmnetlib) $(dcmdatalib) $(ofstdlib) $(ZLIBLIBS) $(TCPWRAPPERLIBS)
+LOCALLIBS = -ldcmqrdb $(CLUCENELIBS) $(BOOSTLIBS) $(dcmnetlib) $(dcmdatalib) $(ofstdlib) $(ZLIBLIBS) $(TCPWRAPPERLIBS)
 LOCALDEFS = -DWITH_LUCENE
 
 objs = dcmqrscp.o dcmqrti.o dcmqridx.o
