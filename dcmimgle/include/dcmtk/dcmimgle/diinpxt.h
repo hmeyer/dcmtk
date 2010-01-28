@@ -365,7 +365,7 @@ class DiInputPixelTemplate
 #ifdef DEBUG
             if (DicomImageClass::checkDebugLevel(DicomImageClass::DL_Informationals))
             {
-                ofConsole.lockCerr() << bitsAllocated << " " << bitsStored << " " << highBit << " " << isSigned() << endl;
+                ofConsole.lockCerr() << bitsAllocated << " " << bitsStored << " " << highBit << " " << this->isSigned() << endl;
                 ofConsole.unlockCerr();
             }
 #endif
