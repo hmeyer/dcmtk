@@ -73,6 +73,7 @@ OPENSSLLIBS = @OPENSSLLIBS@
 TIFFLIBS = @TIFFLIBS@
 PNGLIBS = @PNGLIBS@
 ZLIBLIBS = @ZLIBLIBS@
+JASPERLIBS = -ljasper
 CLUCENELIBS = -lclucene-core
 BOOSTLIBS = -lboost_system-mt -lboost_filesystem-mt
 XMLLIBS = @XMLLIBS@

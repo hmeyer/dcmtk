@@ -170,6 +170,13 @@ extern const OFCondition EJ_IJG16_FrameBufferTooSmall;
 extern const OFCondition EJ_UnsupportedPhotometricInterpretation;
 /// Codec does not support this kind of color conversion
 extern const OFCondition EJ_UnsupportedColorConversion;
+/// Codec implementation does not support multiple Components
+extern const OFCondition EJ_UnsupportedNumberOfComponents;
+/// Coded and expected Signedness do not match
+extern const OFCondition EJ_ConflictingSignedness;
+/// Error in JPEG2000 decoder
+extern const OFCondition EJ_JPEG2000DecoderError;
+
 
 // reserved condition codes for IJG error messages
 const unsigned short EJCode_IJG8_Compression    = 0x0100;
@@ -178,6 +185,7 @@ const unsigned short EJCode_IJG12_Compression   = 0x0102;
 const unsigned short EJCode_IJG12_Decompression = 0x0103;
 const unsigned short EJCode_IJG16_Compression   = 0x0104;
 const unsigned short EJCode_IJG16_Decompression = 0x0105;
+const unsigned short EJCode_JP2_Decompression = 0x0106;
 
 /** helper class with static methods used from different dcmjpeg classes
  *  (in particular from the encoder and the decoder part).

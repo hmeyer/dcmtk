@@ -45,6 +45,7 @@ class DJDecoderLossless;
 class DJDecoderP14SV1;
 class DJDecoderProgressive;
 class DJDecoderSpectralSelection;
+class DJDecoderJPEG2000Lossless;
 
 /** singleton class that registers decoders for all supported JPEG processes.
  */
@@ -98,6 +99,9 @@ private:
 
   /// pointer to decoder for lossless JPEG
   static DJDecoderLossless *declol;
+
+  /// pointer to decoder for lossless JPEG2000
+  static DJDecoderJPEG2000Lossless *decjp2lol;
   
 };
 

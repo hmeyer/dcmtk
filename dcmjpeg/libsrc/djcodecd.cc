@@ -131,7 +131,13 @@ OFCondition DJCodecDecoder::decode(
         result = pixItem->getUint8Array(jpegData);
         if (result.good())
         {
-          Uint8 precision = scanJpegDataForBitDepth(jpegData, fragmentLength);
+          Uint8 precision = 0;
+	  
+	  if (supportedTransferSyntax() == EXS_JPEG2000LosslessOnly) {
+	    precision = imageBitsStored;
+	  } else {
+	    precision = scanJpegDataForBitDepth(jpegData, fragmentLength);
+	  }
           if (precision == 0) result = EC_CannotChangeRepresentation; // something has gone wrong, bail out
           else
           {

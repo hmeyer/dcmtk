@@ -45,6 +45,9 @@ const OFConditionConst EJC_IJG12_FrameBufferTooSmall(            OFM_dcmjpeg,  3
 const OFConditionConst EJC_IJG16_FrameBufferTooSmall(            OFM_dcmjpeg,  4, OF_error, "Buffer for decompressed image (16 bits/sample) too small"  );
 const OFConditionConst EJC_UnsupportedPhotometricInterpretation( OFM_dcmjpeg,  5, OF_error, "Codec does not support this PhotometricInterpretation"  );
 const OFConditionConst EJC_UnsupportedColorConversion(           OFM_dcmjpeg,  6, OF_error, "Codec does not support this kind of color conversion"  );
+const OFConditionConst EJC_UnsupportedNumberOfComponents(        OFM_dcmjpeg,  7, OF_error, "Codec implementation does not support multiple Components"  );
+const OFConditionConst EJC_ConflictingSignedness(        	 OFM_dcmjpeg,  8, OF_error, "Coded and expected Signedness do not match"  );
+const OFConditionConst EJC_JPEG2000DecoderError(        	 OFM_dcmjpeg,  9, OF_error, "Error in JPEG2000 decoder"  );
 
 const OFCondition      EJ_Suspension(                           EJC_Suspension);
 const OFCondition      EJ_IJG8_FrameBufferTooSmall(             EJC_IJG8_FrameBufferTooSmall);
@@ -52,6 +55,11 @@ const OFCondition      EJ_IJG12_FrameBufferTooSmall(            EJC_IJG12_FrameB
 const OFCondition      EJ_IJG16_FrameBufferTooSmall(            EJC_IJG16_FrameBufferTooSmall);
 const OFCondition      EJ_UnsupportedPhotometricInterpretation( EJC_UnsupportedPhotometricInterpretation);
 const OFCondition      EJ_UnsupportedColorConversion(           EJC_UnsupportedColorConversion);
+const OFCondition      EJ_UnsupportedNumberOfComponents(           EJC_UnsupportedNumberOfComponents);
+const OFCondition      EJ_ConflictingSignedness(           EJC_ConflictingSignedness);
+const OFCondition      EJ_JPEG2000DecoderError(           EJC_JPEG2000DecoderError);
+
+
 EP_Interpretation DcmJpegHelper::getPhotometricInterpretation(DcmItem *item)
 {
   if (item)

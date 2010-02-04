@@ -25,7 +25,8 @@ LOCALDEFS =
 objs = djutils.o  djencode.o djrplol.o  djrploss.o djcparam.o djeijg8.o djdijg8.o  \
        djcodecd.o djdecbas.o djdecext.o djdecpro.o djdecsps.o djdeclol.o djdecsv1.o \
        djcodece.o djencbas.o djencext.o djencpro.o djencsps.o djenclol.o djencsv1.o \
-       djeijg12.o djdijg12.o djeijg16.o djdijg16.o djdecode.o dipijpeg.o ddpiimpl.o
+       djeijg12.o djdijg12.o djeijg16.o djdijg16.o djdecode.o dipijpeg.o ddpiimpl.o \
+       djdecjp2lol.o djdjp2.o
 library = libdcmjpeg.$(LIBEXT)
 
 
