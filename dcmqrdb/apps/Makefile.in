@@ -41,7 +41,7 @@ LOCALINCLUDES = $(dcmnetinc) $(dcmdatainc) $(ofstdinc) $(dcmimgleinc) $(dcmjpegi
 LIBDIRS = -L$(top_srcdir)/libsrc $(dcmnetlibdir) $(dcmdatalibdir) $(ofstdlibdir)\
       $(dcmjpeglibdir) $(dcmimglelibdir)
 LOCALLIBS = -ldcmqrdb $(CLUCENELIBS) $(BOOSTLIBS) $(dcmnetlib) $(dcmdatalib)\
-      $(ofstdlib) $(dcmjpeglib) $(dcmimglelib) $(ZLIBLIBS) $(TCPWRAPPERLIBS)
+      $(ofstdlib) $(dcmjpeglib) $(dcmimglelib) $(ZLIBLIBS) $(TCPWRAPPERLIBS) $(JASPERLIBS)
 
 objs = dcmqrscp.o dcmqrti.o dcmqridx.o
 progs = dcmqrscp dcmqrti dcmqridx
