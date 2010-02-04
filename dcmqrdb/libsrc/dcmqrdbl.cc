@@ -211,9 +211,9 @@ Query *generateQuery(const Lucene_Entry &entryData, const std::string &svalue) {
       }
       throw std::runtime_error(std::string(__FUNCTION__) + ":Time-Queries (like \"" + svalue + "\")not supported");  // TODO: enable RangeQueries
     }
-  } else {
+  }// else {
     throw std::runtime_error(std::string(__FUNCTION__) + ":Key Class not supported");
-  }
+//  }
 }
   
 
