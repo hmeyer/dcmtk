@@ -1389,7 +1389,7 @@ int main(int argc, char *argv[])
             {
                 /* output to file */
                 if (opt_multiFrame)
-                    sprintf(ofname, "%s.%d.%s", opt_ofname, frame, ofext);
+                    sprintf(ofname, "%s.%d.%s", opt_ofname, (int)(frame + opt_frame), ofext);
                 else
                     strcpy(ofname, opt_ofname);
                 if (opt_verboseMode > 1)
