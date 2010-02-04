@@ -62,6 +62,7 @@ BEGIN_EXTERN_C
 END_EXTERN_C
 
 const unsigned int MAX_STUDIES = 20;
+const int NumStoreRetries = 10;
 
 #include <sstream>
 #include <iostream>
@@ -1446,8 +1447,10 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_sendStudy(int arg)
             return OFFalse;
         }
         if (dbStatus.status() == STATUS_Pending) {
-
-            ok = TI_storeImage(sopClass, sopInstance, imgFile);
+	    int retryCount = NumStoreRetries;
+	    do {
+            	ok = TI_storeImage(sopClass, sopInstance, imgFile);
+	    } while(!ok && retryCount-- > 0);
             if (!ok) {
                 currentdb.dbHandle->cancelMoveRequest(&dbStatus);
             }
@@ -1524,7 +1527,10 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_sendSeries(int arg)
         }
         if (dbStatus.status() == STATUS_Pending) {
 
-            ok = TI_storeImage(sopClass, sopInstance, imgFile);
+	    int retryCount = NumStoreRetries;
+	    do {
+            	ok = TI_storeImage(sopClass, sopInstance, imgFile);
+	    } while(!ok && retryCount-- > 0);
             if (!ok) {
                 currentdb.dbHandle->cancelMoveRequest(&dbStatus);
             }
@@ -1608,7 +1614,10 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_sendImage(int arg)
         }
         if (dbStatus.status() == STATUS_Pending) {
 
-            ok = TI_storeImage(sopClass, sopInstance, imgFile);
+	    int retryCount = NumStoreRetries;
+	    do {
+            	ok = TI_storeImage(sopClass, sopInstance, imgFile);
+	    } while(!ok && retryCount-- > 0);
             if (!ok) {
                 currentdb.dbHandle->cancelMoveRequest(&dbStatus);
             }
