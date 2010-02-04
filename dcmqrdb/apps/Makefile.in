@@ -26,10 +26,22 @@ dcmnetinc = -I$(dcmnetdir)/include
 dcmnetlibdir = -L$(dcmnetdir)/libsrc
 dcmnetlib = -ldcmnet
 
-LOCALINCLUDES = $(dcmnetinc) $(dcmdatainc) $(ofstdinc)
-LIBDIRS = -L$(top_srcdir)/libsrc $(dcmnetlibdir) $(dcmdatalibdir) $(ofstdlibdir)
-LOCALLIBS = -ldcmqrdb $(CLUCENELIBS) $(BOOSTLIBS) $(dcmnetlib) $(dcmdatalib) $(ofstdlib) $(ZLIBLIBS) $(TCPWRAPPERLIBS)
-LOCALDEFS = -DWITH_LUCENE
+dcmimgledir = $(top_srcdir)/../dcmimgle
+dcmimgleinc = -I$(dcmimgledir)/include
+dcmimglelibdir = -L$(dcmimgledir)/libsrc
+dcmimglelib = -ldcmimgle
+
+dcmjpegdir = $(top_srcdir)/../dcmjpeg
+dcmjpeginc = -I$(dcmjpegdir)/include
+dcmjpeglibdir = -L$(dcmjpegdir)/libsrc -L$(dcmjpegdir)/libijg8 -L$(dcmjpegdir)/libijg12 \
+	-L$(dcmjpegdir)/libijg16
+dcmjpeglib = -ldcmjpeg -lijg8 -lijg12 -lijg16
+
+LOCALINCLUDES = $(dcmnetinc) $(dcmdatainc) $(ofstdinc) $(dcmimgleinc) $(dcmjpeginc)
+LIBDIRS = -L$(top_srcdir)/libsrc $(dcmnetlibdir) $(dcmdatalibdir) $(ofstdlibdir)\
+      $(dcmjpeglibdir) $(dcmimglelibdir)
+LOCALLIBS = -ldcmqrdb $(CLUCENELIBS) $(BOOSTLIBS) $(dcmnetlib) $(dcmdatalib)\
+      $(ofstdlib) $(dcmjpeglib) $(dcmimglelib) $(ZLIBLIBS) $(TCPWRAPPERLIBS)
 
 objs = dcmqrscp.o dcmqrti.o dcmqridx.o
 progs = dcmqrscp dcmqrti dcmqridx

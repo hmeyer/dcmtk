@@ -60,6 +60,13 @@ END_EXTERN_C
 #include <zlib.h>          /* for zlibVersion() */
 #endif
 
+#ifdef ON_THE_FLY_COMPRESSION
+#include "dcmtk/dcmjpeg/djdecode.h"  /* for dcmjpeg decoders */
+#include "dcmtk/dcmjpeg/djencode.h"  /* for dcmjpeg encoders */
+#include "dcmtk/dcmdata/dcrledrg.h"  /* for DcmRLEDecoderRegistration */
+#include "dcmtk/dcmdata/dcrleerg.h"  /* for DcmRLEEncoderRegistration */
+#endif
+
 
 #define OFFIS_CONSOLE_APPLICATION "dcmqrti"
 #define MAXREMOTEDBTITLES 20
@@ -254,6 +261,22 @@ int main( int argc, char *argv[] )
     }
 
   }
+  
+#ifdef ON_THE_FLY_COMPRESSION
+    // register global JPEG decompression codecs
+    DJDecoderRegistration::registerCodecs();
+
+    // register global JPEG compression codecs
+    DJEncoderRegistration::registerCodecs();
+
+    // register RLE compression codec
+    DcmRLEEncoderRegistration::registerCodecs();
+
+    // register RLE decompression codec
+    DcmRLEDecoderRegistration::registerCodecs();
+#endif
+
+  
 
   // in case accessing the configuration file for reading is successful
   if( access( configFileName, R_OK ) != -1 )
@@ -397,6 +420,16 @@ int main( int argc, char *argv[] )
     CERR << "ti: cannot access configuration file '" << configFileName << "'." << endl;
     returnValue = 1;
   }
+
+#ifdef ON_THE_FLY_COMPRESSION
+    // deregister JPEG codecs
+    DJDecoderRegistration::cleanup();
+    DJEncoderRegistration::cleanup();
+
+    // deregister RLE codecs
+    DcmRLEDecoderRegistration::cleanup();
+    DcmRLEEncoderRegistration::cleanup();
+#endif
 
 #ifdef HAVE_WINSOCK_H
   WSACleanup();

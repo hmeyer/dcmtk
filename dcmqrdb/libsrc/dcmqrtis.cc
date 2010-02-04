@@ -49,6 +49,7 @@
 #include "dcmtk/dcmdata/dcfilefo.h"
 #include "dcmtk/dcmqrdb/dcmqropt.h"
 
+
 #include <algorithm>
 
 BEGIN_EXTERN_C
@@ -794,11 +795,29 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_storeImage(char *sopClass, char *sopI
     req.DataSetType = DIMSE_DATASET_PRESENT;
     req.Priority = DIMSE_PRIORITY_MEDIUM;
 
+    
+    DcmFileFormat dcmff;
+    cond = dcmff.loadFile(imgFile);
+    /* figure out if an error occured while the file was read*/
+    if (cond.bad()) {
+        printf("Bad DICOM file: %s: %s", imgFile, cond.text());
+        return cond.good();
+    }
+
+
+#ifdef ON_THE_FLY_COMPRESSION
+    T_ASC_PresentationContext pc;
+    ASC_findAcceptedPresentationContext(assoc->params, presId, &pc);
+    DcmXfer netTransfer(pc.acceptedTransferSyntax);
+    dcmff.getDataset()->chooseRepresentation(netTransfer.getXfer(), NULL);
+#endif    
+    
     DcmDataset *tstd;
     cond = DIMSE_storeUser(assoc, presId, &req,
-       imgFile, NULL, storeProgressCallback, NULL,
+        NULL, dcmff.getDataset(), storeProgressCallback, NULL,
         blockMode_, dimse_timeout_,
-        &rsp, &tstd);
+        &rsp, &tstd, NULL, DU_fileSize(imgFile));    
+
     stDetail.reset(tstd);
 
 #ifdef LOCK_IMAGE_FILES
