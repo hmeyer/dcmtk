@@ -1412,15 +1412,20 @@ storeSCU(T_ASC_Association * assoc, const char *fname)
         return DIMSE_NOVALIDPRESENTATIONCONTEXTID;
     }
 
+    T_ASC_PresentationContext pc;
+    ASC_findAcceptedPresentationContext(assoc->params, presId, &pc);
+    DcmXfer netTransfer(pc.acceptedTransferSyntax);
+
     /* if required, dump general information concerning transfer syntaxes */
     if (opt_verbose) {
         DcmXfer fileTransfer(dcmff.getDataset()->getOriginalXfer());
-        T_ASC_PresentationContext pc;
-        ASC_findAcceptedPresentationContext(assoc->params, presId, &pc);
-        DcmXfer netTransfer(pc.acceptedTransferSyntax);
         printf("Transfer: %s -> %s\n",
             dcmFindNameOfUID(fileTransfer.getXferID()), dcmFindNameOfUID(netTransfer.getXferID()));
     }
+    
+#ifdef ON_THE_FLY_COMPRESSION
+    dcmff.getDataset()->chooseRepresentation(netTransfer.getXfer(), NULL);
+#endif    
 
     /* prepare the transmission of data */
     bzero((char*)&req, sizeof(req));
