@@ -794,7 +794,6 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_storeImage(char *sopClass, char *sopI
     strcpy(req.AffectedSOPInstanceUID, sopInstance);
     req.DataSetType = DIMSE_DATASET_PRESENT;
     req.Priority = DIMSE_PRIORITY_MEDIUM;
-
     
     DcmFileFormat dcmff;
     cond = dcmff.loadFile(imgFile);
@@ -804,7 +803,6 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_storeImage(char *sopClass, char *sopI
         return cond.good();
     }
 
-
 #ifdef ON_THE_FLY_COMPRESSION
     T_ASC_PresentationContext pc;
     ASC_findAcceptedPresentationContext(assoc->params, presId, &pc);
@@ -812,7 +810,7 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_storeImage(char *sopClass, char *sopI
     dcmff.getDataset()->chooseRepresentation(netTransfer.getXfer(), NULL);
 #endif    
     
-    DcmDataset *tstd;
+    DcmDataset *tstd = NULL;
     cond = DIMSE_storeUser(assoc, presId, &req,
         NULL, dcmff.getDataset(), storeProgressCallback, NULL,
         blockMode_, dimse_timeout_,
@@ -840,7 +838,6 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_storeImage(char *sopClass, char *sopI
         printf("  Status Detail:\n");
         stDetail->print(COUT);
     }
-
     return (cond.good());
 }
 
