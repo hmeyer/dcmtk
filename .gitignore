@@ -2,6 +2,8 @@
 !/*/apps/[a-z]*.*
 /*/tests/[a-z]*
 !/*/tests/[a-z]*.*
+/*/wwwapps/[a-z]*
+!/*/wwwapps/[a-z]*.*
 *.o
 *.a
 *.swp
