@@ -19,19 +19,16 @@ using namespace std;
 DJDecoderJPEG2000Lossless::DJDecoderJPEG2000Lossless()
 : DJCodecDecoder()
 {
-  cerr << __FUNCTION__ << endl;
 }
 
 
 DJDecoderJPEG2000Lossless::~DJDecoderJPEG2000Lossless()
 {
-  cerr << __FUNCTION__ << endl;
 }
 
 
 E_TransferSyntax DJDecoderJPEG2000Lossless::supportedTransferSyntax() const
 {
-  cerr << __FUNCTION__ << endl;
   return EXS_JPEG2000LosslessOnly;
 }
 
@@ -42,6 +39,5 @@ DJDecoder *DJDecoderJPEG2000Lossless::createDecoderInstance(
     Uint8 bitsPerSample,
     OFBool isYBR) const
 {
-  cerr << __FUNCTION__ << endl;
   return new DJDecompressJPEG2000( *cp, isYBR, bitsPerSample );
 }

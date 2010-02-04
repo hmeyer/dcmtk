@@ -33,27 +33,23 @@ DJDecompressJPEG2000::DJDecompressJPEG2000(const DJCodecParameter& cp, OFBool is
 , dicomPhotometricInterpretationIsYCbCr(isYBR)
 , decompressedColorModel(EPI_Unknown)*/
 {
-  cerr << __FUNCTION__ << endl;
   jas_init();
 }
 
 DJDecompressJPEG2000::~DJDecompressJPEG2000()
 {
-  cerr << __FUNCTION__ << endl;
   cleanup();
 }
 
 
 OFCondition DJDecompressJPEG2000::init()
 {
-  cerr << __FUNCTION__ << endl;
   return EC_Normal;
 }
 
 
 void DJDecompressJPEG2000::cleanup()
 {
-  cerr << __FUNCTION__ << endl;
   jas_cleanup();
 }
 
@@ -65,10 +61,8 @@ OFCondition DJDecompressJPEG2000::decode(
   Uint32 uncompressedFrameBufferSize,
   OFBool isSigned)
 {
-  cerr << __FUNCTION__ << ": starting with " << compressedFrameBufferSize << " bytes" << endl;
   jas_stream_t* jp2Stream = jas_stream_memopen( (char*)compressedFrameBuffer, compressedFrameBufferSize );
-//  jas_stream_t* outStream = jas_stream_memopen( (char*)uncompressedFrameBuffer, uncompressedFrameBufferSize );
-  if (!jp2Stream){// || !outStream) {
+  if (!jp2Stream) {
     cleanup();
     return EJ_JPEG2000DecoderError;
   }
@@ -79,7 +73,6 @@ OFCondition DJDecompressJPEG2000::decode(
     cleanup();
     return EJ_JPEG2000DecoderError;
   }
-  cerr << "decoded JPEG2000: " << jas_image_numcmpts(image) << " components" <<  endl;
   if (jas_image_numcmpts(image)!=1) { //only do Grayscale at the moment
     cleanup();
     return EJ_UnsupportedNumberOfComponents;
@@ -106,22 +99,12 @@ OFCondition DJDecompressJPEG2000::decode(
     *(uncompressedFrameBuffer++) = b2;
     *(uncompressedFrameBuffer++) = b1;
   }
-//  jas_stream_copy(outStream, cpt->stream_, -1);
-//  jas_stream_seek(outStream, 0, SEEK_SET );
 
-//  jas_stream_close( outStream );
   jas_image_destroy( image );
   return EC_Normal;
 }
 
 void DJDecompressJPEG2000::outputMessage() const
 {
-  cerr << __FUNCTION__ << endl;
-/*
-  if (cinfo && cparam->isVerbose())
-  {
-    ofConsole.lockCerr() << "JPEG2000 decoder" << endl;
-    ofConsole.unlockCerr();
-  }
-*/  
+  cerr << __FILE__ << ":" <<__FUNCTION__ << endl;
 }
