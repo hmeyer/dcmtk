@@ -1450,7 +1450,12 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_sendStudy(int arg)
 	    int retryCount = NumStoreRetries;
 	    do {
             	ok = TI_storeImage(sopClass, sopInstance, imgFile);
-	    } while(!ok && retryCount-- > 0);
+		if (!ok) {
+    			ok = TI_detachAssociation(OFFalse);
+    			ok = TI_changeAssociation();
+			if (!ok) return OFFalse;
+		}
+	    } while(!ok && --retryCount > 0);
             if (!ok) {
                 currentdb.dbHandle->cancelMoveRequest(&dbStatus);
             }
@@ -1526,11 +1531,15 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_sendSeries(int arg)
             return OFFalse;
         }
         if (dbStatus.status() == STATUS_Pending) {
-
 	    int retryCount = NumStoreRetries;
 	    do {
             	ok = TI_storeImage(sopClass, sopInstance, imgFile);
-	    } while(!ok && retryCount-- > 0);
+		if (!ok) {
+    			ok = TI_detachAssociation(OFFalse);
+    			ok = TI_changeAssociation();
+			if (!ok) return OFFalse;
+		}
+	    } while(!ok && --retryCount > 0);
             if (!ok) {
                 currentdb.dbHandle->cancelMoveRequest(&dbStatus);
             }
@@ -1613,11 +1622,15 @@ OFBool DcmQueryRetrieveTelnetInitiator::TI_sendImage(int arg)
             return OFFalse;
         }
         if (dbStatus.status() == STATUS_Pending) {
-
 	    int retryCount = NumStoreRetries;
 	    do {
             	ok = TI_storeImage(sopClass, sopInstance, imgFile);
-	    } while(!ok && retryCount-- > 0);
+		if (!ok) {
+    			ok = TI_detachAssociation(OFFalse);
+    			ok = TI_changeAssociation();
+			if (!ok) return OFFalse;
+		}
+	    } while(!ok && --retryCount > 0);
             if (!ok) {
                 currentdb.dbHandle->cancelMoveRequest(&dbStatus);
             }
