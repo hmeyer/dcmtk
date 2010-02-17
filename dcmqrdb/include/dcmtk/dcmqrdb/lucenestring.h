@@ -1,14 +1,11 @@
-#ifndef LUCENEHELPER_H
-#define LUCENEHELPER_H
+#ifndef LUCENESTRING_H
+#define LUCENESTRING_H
 
 #include "dcmtk/dcmdata/dctagkey.h"
-#include "dcmtk/ofstd/ofcond.h"
 #include <CLucene/clucene-config.h>
 #include <string>
 #include <sstream>
 
-
-//typedef std::basic_string< TCHAR > LuceneString;
 
 class LuceneString:public std::basic_string< TCHAR > {
   public:
@@ -23,8 +20,6 @@ class LuceneString:public std::basic_string< TCHAR > {
   }
   std::string toStdString(void) const;
   LuceneString toLower(void) const;
-//  private:
-//    std::string stdversion;
 };
 
 /** this class provides a primitive interface for handling a flat DICOM element,
@@ -47,26 +42,6 @@ std::string toString(const T & value)
 }
 
 
-/*
-template< class SomeStringType >
-void str2LuceneStr( SomeStringType in, LuceneString &out ) {
-  const std::string istring(in);
-  out.assign( istring.begin(), istring.end() );
-}
-template< class SomeStringType >
-LuceneString str2LuceneStr( const SomeStringType &i ) {
-  LuceneString lstring;
-  str2LuceneStr( i, lstring );
-  return lstring;
-}
-
-std::string LuceneStr2str( LuceneString in );
-*/
-/*
-DcmTagKey LuceneStr2Tag( const LuceneString &in );
-std::string LuceneTagStr2DictStr( const LuceneString &in );
-DcmTagKey LuceneStr2Tag( const LuceneString &in, OFCondition &cond );
-*/
 
 
 
