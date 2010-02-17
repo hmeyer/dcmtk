@@ -22,7 +22,7 @@ LOCALDEFS =
 
 objs = dcmqrcbf.o dcmqrcbg.o dcmqrcbm.o dcmqrcbs.o dcmqrcnf.o dcmqrdbi.o  \
        dcmqrdbl.o dcmqrdbs.o dcmqropt.o dcmqrptb.o dcmqrsrv.o dcmqrtis.o \
-       lucenehelper.o dcmqrdblhimpl.o
+       lucenestring.o lowercaseanalyzer.o dcmqrdblhimpl.o
 
 library = libdcmqrdb.$(LIBEXT)
 

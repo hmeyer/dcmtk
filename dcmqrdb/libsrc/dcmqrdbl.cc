@@ -19,33 +19,30 @@
 
 #include <iostream>
 
-#include "dcmtk/dcmqrdb/dcmqrdbl.h"
-#include "dcmqrdblhimpl.h"
-
-#include "dcmtk/dcmqrdb/dcmqrdbl-taglist.h"
 
 
-#include "boost/format.hpp"
-#include "boost/lambda/lambda.hpp"
-#include "boost/bind.hpp"
-#include <string>
-#include <algorithm>
-#include <exception>
 
 
 
 #include <CLucene.h>
 
+#include <boost/format.hpp>
+#include <boost/lambda/lambda.hpp>
+#include <boost/bind.hpp>
 #include <boost/scoped_ptr.hpp>
 #include <boost/filesystem/operations.hpp>
 #include <boost/filesystem/path.hpp>
 
 #include <map>
 #include <list>
+#include <string>
+#include <algorithm>
+#include <exception>
 
 
 #include "dcmtk/dcmqrdb/dcmqrdbl-taglist.h"
 #include "dcmtk/dcmqrdb/dcmqrdbl.h"
+#include "dcmtk/dcmqrdb/dcmqrdblhimpl.h"
 
 #include "dcmtk/ofstd/ofstdinc.h"
 #include "dcmtk/dcmdata/dcfilefo.h"
@@ -56,20 +53,28 @@
 
 #include "dcmtk/dcmqrdb/dcmqrcnf.h"
 
-#include "dcmqrdblhimpl.h"
-
-
 bool DcmQueryRetrieveLuceneIndexHandle::indexExists( const OFString &s ) {
-  return DcmQRDBLHImpl::indexExists( s );
+  return DcmQRDBLHImpl::indexExists( s.c_str() );
 }
 
 
 DcmQueryRetrieveLuceneIndexHandle::DcmQueryRetrieveLuceneIndexHandle(
   const OFString &storageArea,
   DcmQRLuceneIndexType indexType,
-  OFCondition& result):doCheckFindIdentifier(OFFalse),doCheckMoveIdentifier(OFFalse),debugLevel(10),
-  impl( new DcmQRDBLHImpl(storageArea, indexType, result) ) {}
-
+  OFCondition& result):doCheckFindIdentifier(OFFalse),doCheckMoveIdentifier(OFFalse),debugLevel(10) {
+    DcmQRDBLHImpl::Result r;
+    impl.reset( new DcmQRDBLHImpl(storageArea.c_str(), indexType, r) );
+    result = (r==DcmQRDBLHImpl::good) ? EC_Normal : DcmQRLuceneIndexError;
+  }
+  
+DcmQueryRetrieveLuceneIndexHandle::DcmQueryRetrieveLuceneIndexHandle(
+    DcmQueryRetrieveLuceneIndexHandle &other,
+    OFCondition& result):doCheckFindIdentifier(OFFalse),doCheckMoveIdentifier(OFFalse),debugLevel(10) {
+    DcmQRDBLHImpl::Result r;
+    impl.reset( new DcmQRDBLHImpl(*other.impl,r) );
+    result = (r==DcmQRDBLHImpl::good) ? EC_Normal : DcmQRLuceneIndexError;
+}
+    
 DcmQueryRetrieveLuceneIndexHandle::~DcmQueryRetrieveLuceneIndexHandle() {}
 
 
@@ -743,20 +748,4 @@ DcmQueryRetrieveDatabaseHandle *DcmQueryRetrieveLuceneIndexWriterHandleFactory::
 }
 
 
-
-LowerCaseAnalyzer::LowerCaseAnalyzer(){}
-LowerCaseAnalyzer::~LowerCaseAnalyzer(){}
-TokenStream* LowerCaseAnalyzer::tokenStream(const TCHAR* fieldName, CL_NS(util)::Reader* reader){
-    return new LowerCaseTokenizer(reader);
-}
-TokenStream* LowerCaseAnalyzer::reusableTokenStream(const TCHAR* fieldName, CL_NS(util)::Reader* reader)
-{
-	Tokenizer* tokenizer = static_cast<Tokenizer*>(getPreviousTokenStream());
-	if (tokenizer == NULL) {
-		tokenizer = new LowerCaseTokenizer(reader);
-		setPreviousTokenStream(tokenizer);
-	} else
-		tokenizer->reset(reader);
-	return tokenizer;
-}
     

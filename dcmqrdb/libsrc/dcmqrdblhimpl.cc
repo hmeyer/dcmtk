@@ -26,26 +26,25 @@
 
 */
 
-#include "dcmtk/ofstd/ofstdinc.h"
-#include "dcmtk/dcmdata/dcfilefo.h"
-#include "dcmtk/dcmdata/dcdict.h"
-#include "dcmtk/dcmnet/diutil.h"
-#include "dcmtk/dcmqrdb/dcmqrdbs.h"
 
-
-#include "dcmtk/dcmqrdb/dcmqrcnf.h"
-
-#include "dcmqrdblhimpl.h"
+#include "dcmtk/dcmqrdb/dcmqrdbl-taglist.h"
+#include "dcmtk/dcmqrdb/dcmqrdblhimpl.h"
 
 #include <iostream>
 
-bool DcmQRDBLHImpl::indexExists( const OFString &s ) {
+using namespace std;
+
+
+
+
+
+bool DcmQRDBLHImpl::indexExists( const string &s ) {
   return IndexReader::indexExists( storageAreaToIndexPath( s ).c_str() );
 }
 
-DcmQRDBLHImpl::DcmQRDBLHImpl(const OFString &storageArea,
+DcmQRDBLHImpl::DcmQRDBLHImpl(const string &storageArea,
   DcmQRLuceneIndexType indexType,
-  OFCondition& result):storageArea(storageArea), analyzer( new LowerCaseAnalyzer()),imageDoc( new Document),indexType( indexType ) 
+  Result& result):storageArea(storageArea), analyzer( new LowerCaseAnalyzer()),imageDoc( new Document),indexType( indexType ) 
   {
   if (indexType == DcmQRLuceneWriter) {
     bool indexExists = false;
@@ -59,12 +58,22 @@ DcmQRDBLHImpl::DcmQRDBLHImpl(const OFString &storageArea,
       indexwriter.reset( new IndexWriter( getIndexPath().c_str(),
 					    analyzer.get(), !indexExists) );
     } catch(CLuceneError &e) {
-      CERR << "Exception while creation of IndexWriter caught:" << e.what() << endl;
-      result = DcmQRLuceneIndexError;
+      cerr << "Exception while creation of IndexWriter caught:" << e.what() << endl;
+      result = error;
     }
   }
   result = recreateSearcher();
 }
+
+DcmQRDBLHImpl::DcmQRDBLHImpl(DcmQRDBLHImpl &other, Result &r)
+  :storageArea(other.storageArea), analyzer( other.analyzer ),imageDoc( new Document ),indexType( other.indexType )  {
+  if (indexType == DcmQRLuceneWriter) {
+    indexwriter = other.indexwriter;
+  }
+  indexsearcher = other.indexsearcher;
+  r = good;
+}
+
 
 void DcmQRDBLHImpl::refreshForSearch(void) {
   if (indexType == DcmQRLuceneWriter)
@@ -73,23 +82,23 @@ void DcmQRDBLHImpl::refreshForSearch(void) {
 }
 
 
-OFCondition DcmQRDBLHImpl::recreateSearcher(void) {
+DcmQRDBLHImpl::Result DcmQRDBLHImpl::recreateSearcher(void) {
   if (indexType == DcmQRLuceneWriter) {
     try {
       indexsearcher.reset( new IndexSearcher( indexwriter->getDirectory() ) );
     } catch(CLuceneError &e) {
-      CERR << "Exception while creation of IndexSearcher caught:" << e.what() << endl;
-      return DcmQRLuceneIndexError;
+      cerr << "Exception while creation of IndexSearcher caught:" << e.what() << endl;
+      return error;
     }
-  } else if (indexType == DcmQRLuceneReader) {
+  } else if (indexType == DcmQRLuceneReader && !indexsearcher) {
     try {
       indexsearcher.reset( new IndexSearcher( getIndexPath().c_str()) );
     } catch(CLuceneError &e) {
-      CERR << "Exception while creation of IndexSearcher caught:" << e.what() << endl;
-      return DcmQRLuceneIndexError;
+      cerr << "Exception while creation of IndexSearcher caught:" << e.what() << endl;
+      return error;
     }
   }
-  return EC_Normal;
+  return good;
 }
 
 
@@ -104,27 +113,27 @@ DcmQRDBLHImpl::~DcmQRDBLHImpl() {
   }
 }
 
-const std::string DcmQRDBLHImpl::storageAreaToIndexPath(const OFString &storageArea) {
-  fs::path storagePath( storageArea.c_str() );
-  fs::path indexPath = storagePath / LUCENEPATH;
+const std::string DcmQRDBLHImpl::storageAreaToIndexPath(const string &storageArea) {
+  fs::path storagePath( storageArea );
+  fs::path indexPath = storagePath / LucenePath;
   return indexPath.string();
 }
 
 
-OFString DcmQRDBLHImpl::getIndexPath(void) {
+string DcmQRDBLHImpl::getIndexPath(void) {
   fs::path indexPath( storageAreaToIndexPath( storageArea ) );
   if (!fs::exists( indexPath ))
     fs::create_directory( indexPath );
   else if (!fs::is_directory( indexPath )) throw new std::runtime_error("Index Path " + indexPath.string() + " is not a directory");
-  return indexPath.string().c_str();
+  return indexPath.string();
 }
 
 bool DcmQRDBLHImpl::checkAndStoreDataForLevel( Lucene_LEVEL level, TagValueMapType &dataset ) { // returns true if Object already existed in level
   LevelTagMapType::const_iterator uidTagIter = LevelToUIDTag.find( level );
-  if (uidTagIter == LevelToUIDTag.end() ) std::runtime_error(std::string(__FUNCTION__) + ": level " + toString(level) +" not found!");
+  if (uidTagIter == LevelToUIDTag.end() ) throw new std::runtime_error(std::string(__FUNCTION__) + ": level " + toString(level) +" not found!");
   const Lucene_Entry &UIDTagEntry = uidTagIter->second;
   TagValueMapType::const_iterator uidDataIter = dataset.find( UIDTagEntry.tag );
-  if (uidDataIter == dataset.end() ) std::runtime_error(std::string(__FUNCTION__) + ": tag " + UIDTagEntry.tagStr.toStdString() + " not found!");
+  if (uidDataIter == dataset.end() ) throw new std::runtime_error(std::string(__FUNCTION__) + ": tag " + UIDTagEntry.tagStr.toStdString() + " not found!");
 
   BooleanQuery lookupQuery;
   lookupQuery.add( new TermQuery( new Term( FieldNameDocumentDicomLevel.c_str(), QRLevelStringMap.find( level )->second.c_str() ) ), BooleanClause::MUST );
@@ -152,3 +161,6 @@ refreshForSearch();
     return false;
   }
 }
+
+
+
