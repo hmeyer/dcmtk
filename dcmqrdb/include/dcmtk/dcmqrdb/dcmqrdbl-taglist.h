@@ -4,40 +4,15 @@
 #include <set>
 #include <map>
 #include <string>
-#include "dcmtk/dcmdata/dcdeftag.h"
-#include "dcmtk/dcmnet/dimse.h"
 #include <boost/assign/list_of.hpp>
 #include <boost/iterator/transform_iterator.hpp>
 
-#include <CLucene/clucene-config.h>
-#include "dcmtk/dcmqrdb/lucenehelper.h"
+#include "dcmtk/dcmqrdb/lucenestring.h"
+#include "dcmtk/dcmqrdb/luceneenums.h"
 
+#include "dcmtk/dcmdata/dcdeftag.h"
+#include "dcmtk/dcmdata/dcuid.h"
 
-/** query models
- */
-enum Lucene_QUERY_CLASS
-{
-    /// patient root Q/R model
-    PATIENT_ROOT=1,
-    /// study root Q/R model
-    STUDY_ROOT,
-    /// patient/study only Q/R model
-    PATIENT_STUDY
-};
-
-/** enumeration describing the levels of the DICOM Q/R information model
-*/
-enum Lucene_LEVEL
-{
-  /// DICOM Q/R patient level
-  PATIENT_LEVEL=11,
-  /// DICOM Q/R study level
-  STUDY_LEVEL,
-  /// DICOM Q/R series level
-  SERIE_LEVEL,
-  /// DICOM Q/R instance level
-  IMAGE_LEVEL
-};
 
 struct Lucene_Entry
 {
@@ -78,7 +53,7 @@ struct Lucene_Entry
   KEY_CLASS keyClass ;
   FIELD_TYPE fieldType ;
   Lucene_Entry(const DcmTagKey& t, Lucene_LEVEL l, KEY_TYPE kt, KEY_CLASS kc, FIELD_TYPE ft) 
-      : tag(t), tagStr( tag ), level(l), keyAttr(kt), keyClass(kc), fieldType(ft) { }
+      : tag(t), tagStr( t ), level(l), keyAttr(kt), keyClass(kc), fieldType(ft) { }
   int operator < (const Lucene_Entry& other) const {
     return this->tag < other.tag;
   }
