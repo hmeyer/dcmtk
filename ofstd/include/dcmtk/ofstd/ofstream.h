@@ -47,6 +47,7 @@
 // For standard STREAMS library: preference for standard stringstream
 #if defined(HAVE_SSTREAM)
 #include <sstream>
+using namespace std;
 #define USE_STRINGSTREAM
 #elif defined(HAVE_STRSTREAM)
 #include <strstream>
