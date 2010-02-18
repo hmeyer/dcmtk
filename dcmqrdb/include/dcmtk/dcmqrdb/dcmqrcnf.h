@@ -148,6 +148,8 @@ public:
    *     0 - not found
    */
   int peerForAETitle(const char *AETitle, const char **HostName, int *PortNumber) const;
+  
+  void getAEList( DcmQueryRetrieveConfigAEEntry ** const AEList, int *numAEs ) const;
 
   /*
    *  check if given AETitles exist in same
@@ -280,6 +282,8 @@ public:
    *      0 if no entries found.
    */
   int aeTitlesForSymbolicName(const char *symbolicName, const char ***aeTitleList) const;
+
+  const char *symbolicNameForAETitle(const char *aeTitle) const;
 
   /*
    *  printf contents of configuration stucture
