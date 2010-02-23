@@ -53,7 +53,7 @@ bool DcmQRDBLHImpl::indexExists( const string &s ) {
 
 DcmQRDBLHImpl::DcmQRDBLHImpl(const string &storageArea,
   DcmQRLuceneIndexType indexType, Result& result)
-  :analyzer( new LowerCaseAnalyzer()), first_modified(new pt::ptime(pt::pos_infin)), storageArea(storageArea), imageDoc( new Document),
+  :analyzer( new LowerCaseWhiteSpaceAnalyzer()), first_modified(new pt::ptime(pt::pos_infin)), storageArea(storageArea), imageDoc( new Document),
   indexType( indexType )
   {
   if (indexType == DcmQRLuceneWriter) {
@@ -177,12 +177,16 @@ void DcmQRDBLHImpl::addDocument( Lucene_LEVEL level, const TagValueMapType &tagD
   if (*first_modified == pt::pos_infin) *first_modified = pt::microsec_clock::local_time();
 }
 
-bool DcmQRDBLHImpl::sopInstanceExists( const LuceneString &sopInstanceUID ) {
-  if ( newUIDSet.find( DicomUID( IMAGE_LEVEL, sopInstanceUID ) ) != newUIDSet.end() ) return true;
+bool DcmQRDBLHImpl::sopInstanceExists( const LuceneString &sopInstanceUID, string &existingFileName ) {
+  if ( newUIDSet.find( DicomUID( IMAGE_LEVEL, sopInstanceUID ) ) != newUIDSet.end() ) flushIndex();
 
   TermQuery tq( new Term( FieldNameDCM_SOPInstanceUID.c_str(), sopInstanceUID.c_str() ) );
   scoped_ptr<Hits> hits( indexsearcher->search(&tq) );
-  if (hits->length()>0) return true;
+  if (hits->length()>0) {
+    Document &responseDoc = hits->doc( 0 );
+    existingFileName = LuceneString( responseDoc.get( FieldNameDicomFileName.c_str() ) ).toStdString();
+    return true;
+  }
   return false;
 }
 
