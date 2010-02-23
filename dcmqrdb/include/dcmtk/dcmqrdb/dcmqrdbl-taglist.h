@@ -67,7 +67,6 @@ const LuceneString FieldNameObjectStatus( "ObjectStatus" );
 const LuceneString ObjectStatusIsNew( "ObjectIsNew" );
 const LuceneString ObjectStatusIsNotNew( "ObjectIsNotNew" );
 const LuceneString ObjectStatusContainsNewSubobjects( "ObjectContainsNewSubobjects" );
-const LuceneString FieldNameInstanceDescription( "InstanceDescription" );
 const LuceneString FieldNameDicomFileName( "DicomFileName" );
 const LuceneString FieldNameDCM_SOPInstanceUID( DCM_SOPInstanceUID );
 const LuceneString FieldNameDCM_SOPClassUID( DCM_SOPClassUID );

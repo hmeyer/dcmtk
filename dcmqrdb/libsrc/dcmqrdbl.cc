@@ -53,6 +53,9 @@
 
 #include "dcmtk/dcmqrdb/dcmqrcnf.h"
 
+
+const int IndexRequestUpToDateMillis = 5000;
+
 bool DcmQueryRetrieveLuceneIndexHandle::indexExists( const OFString &s ) {
   return DcmQRDBLHImpl::indexExists( s.c_str() );
 }
@@ -61,32 +64,28 @@ bool DcmQueryRetrieveLuceneIndexHandle::indexExists( const OFString &s ) {
 DcmQueryRetrieveLuceneIndexHandle::DcmQueryRetrieveLuceneIndexHandle(
   const OFString &storageArea,
   DcmQRLuceneIndexType indexType,
-  OFCondition& result):doCheckFindIdentifier(OFFalse),doCheckMoveIdentifier(OFFalse),debugLevel(10) {
+  OFCondition& result):doCheckFindIdentifier(OFFalse),doCheckMoveIdentifier(OFFalse),debugLevel(10),verbose(false) {
     DcmQRDBLHImpl::Result r;
     impl.reset( new DcmQRDBLHImpl(storageArea.c_str(), indexType, r) );
     result = (r==DcmQRDBLHImpl::good) ? EC_Normal : DcmQRLuceneIndexError;
   }
   
-DcmQueryRetrieveLuceneIndexHandle::DcmQueryRetrieveLuceneIndexHandle(
-    DcmQueryRetrieveLuceneIndexHandle &other,
-    OFCondition& result):doCheckFindIdentifier(OFFalse),doCheckMoveIdentifier(OFFalse),debugLevel(10) {
-    DcmQRDBLHImpl::Result r;
-    impl.reset( new DcmQRDBLHImpl(*other.impl,r) );
-    result = (r==DcmQRDBLHImpl::good) ? EC_Normal : DcmQRLuceneIndexError;
-}
     
 DcmQueryRetrieveLuceneIndexHandle::~DcmQueryRetrieveLuceneIndexHandle() {}
 
+void DcmQueryRetrieveLuceneIndexHandle::setVerbose(bool v) {
+  verbose = v;
+}
 
 
 
 void DcmQueryRetrieveLuceneIndexHandle::printIndexFile(void) {
 dbdebug(1, "%s: start (line %i)", __FUNCTION__, __LINE__) ;
   dbdebug(1,"%s:", __FUNCTION__) ;
-  IndexReader *reader = impl->indexsearcher->getReader();
+  IndexReader &reader = impl->getIndexReader();
   Document myDoc;
-  for( int i = 0; i < reader->numDocs(); i++) {
-    reader->document( i, myDoc, NULL );
+  for( int i = 0; i < reader.numDocs(); i++) {
+    reader.document( i, myDoc, NULL );
     COUT << LuceneString( (const TCHAR*)myDoc.toString() ).toStdString() << std::endl;
     myDoc.clear();
   }
@@ -293,12 +292,15 @@ dbdebug(1, "%s: start (line %i)", __FUNCTION__, __LINE__) ;
   }
   queryLevel = std::min(maxLevel,queryLevel);
   
+  DicomUID mostRestrictiveUID;
   // add UIDs above Level to Lucene Query
   for( int l = baseLevel; l < maxLevel; l++) {
     dataMapIter = dataMap.find( LevelToUIDTag.find( (Lucene_LEVEL)l )->second.tag );
     if ( dataMapIter !=  dataMap.end() && dataMapIter->second.length() > 0) {
       const Lucene_Entry &UIDTag = LevelToUIDTag.find( (Lucene_LEVEL)l )->second;
-      TermQuery *tq = new TermQuery( new Term( UIDTag.tagStr.c_str(), LuceneString( dataMapIter->second.c_str() ).c_str() ));
+      LuceneString uidString( dataMapIter->second );
+      mostRestrictiveUID = DicomUID( (Lucene_LEVEL)l, uidString );
+      TermQuery *tq = new TermQuery( new Term( UIDTag.tagStr.c_str(), uidString.c_str() ));
       baseQuery.add( tq, BooleanClause::MUST );
       dataMap.erase( dataMapIter );
     }
@@ -337,11 +339,7 @@ dbdebug(1, "%s: start (line %i)", __FUNCTION__, __LINE__) ;
   else delete(multiQuery);
 
   dbdebug(2, "%s: searching index: %s", __FUNCTION__, LuceneString((const TCHAR*)baseQuery.toString(NULL)).toStdString().c_str());
-  impl->moveResponseHitCounter = 0;
-// TODO: remove this dumb thing ---- snip -----
-impl->refreshForSearch();
-// TODO: remove this dumb thing ---- snap -----
-  impl->moveResponseHits.reset( impl->indexsearcher->search(&baseQuery) );
+  impl->moveQuery(&baseQuery, IndexRequestUpToDateMillis, mostRestrictiveUID);
 
   dbdebug(1, "%s found %i items", __FUNCTION__, impl->moveResponseHits->length());
 
@@ -501,12 +499,15 @@ dbdebug(1, "%s: start (line %i)", __FUNCTION__, __LINE__) ;
   
   // add Level to Lucene Query
   boolQuery.add( new TermQuery( new Term( FieldNameDocumentDicomLevel.c_str(), QRLevelStringMap.find( queryLevel)->second.c_str() ) ) , BooleanClause::MUST );
+  DicomUID mostRestrictiveUID;
   // add UIDs above Level to Lucene Query
   for( int l = baseLevel; l < maxLevel; l++) {
     dataMapIter = dataMap.find( LevelToUIDTag.find( (Lucene_LEVEL)l )->second.tag );
     if ( dataMapIter !=  dataMap.end() && dataMapIter->second.length() > 0) {
       const Lucene_Entry &UIDTag = LevelToUIDTag.find( (Lucene_LEVEL)l )->second;
-      TermQuery *tq = new TermQuery( new Term( UIDTag.tagStr.c_str(), LuceneString( dataMapIter->second.c_str() ).c_str() ));
+      LuceneString uidString( dataMapIter->second );
+      mostRestrictiveUID = DicomUID( (Lucene_LEVEL)l, uidString );
+      TermQuery *tq = new TermQuery( new Term( UIDTag.tagStr.c_str(), uidString.c_str() ));
       boolQuery.add( tq, BooleanClause::MUST );
     } 
   }
@@ -540,11 +541,7 @@ dbdebug(1, "%s: start (line %i)", __FUNCTION__, __LINE__) ;
   }
 
   dbdebug(2, "%s: searching index: %s", __FUNCTION__, LuceneString((const TCHAR*)boolQuery.toString(NULL)).toStdString().c_str());
-  impl->findResponseHitCounter = 0;
-// TODO: remove this dumb thing ---- snip -----  
-impl->refreshForSearch();
-// TODO: remove this dumb thing ---- snap -----
-  impl->findResponseHits.reset( impl->indexsearcher->search(&boolQuery) );
+  impl->findQuery(&boolQuery, IndexRequestUpToDateMillis, mostRestrictiveUID);
   dbdebug(1, "%s found %i items", __FUNCTION__, impl->findResponseHits->length());
 
   if (impl->findResponseHits->length() == 0) {
@@ -584,12 +581,7 @@ dbdebug(1, "%s: start (line %i)", __FUNCTION__, __LINE__) ;
 	  CERR << __FUNCTION__ << ":\"" << imageFileName << "\" - no DCM_SOPInstanceUID, rejecting" << endl;
 	  return DcmQRLuceneNoSOPIUIDError;
       }
-      TermQuery tq( new Term( FieldNameDCM_SOPInstanceUID.c_str(), LuceneString( SOPInstanceUID ).c_str() ) );
-// TODO: remove this dumb thing ---- snip -----  
-impl->refreshForSearch();
-// TODO: remove this dumb thing ---- snap -----
-      scoped_ptr<Hits> hits( impl->indexsearcher->search(&tq) );
-      if (hits->length()>0) {
+      if (impl->sopInstanceExists(SOPInstanceUID)) {
 	CERR << "storeRequest():\"" << imageFileName << "\" - DCM_SOPInstanceUID already exists, rejecting" << endl;
 	return DcmQRLuceneDoubleSOPIUIDError;
       }
@@ -613,87 +605,19 @@ impl->refreshForSearch();
     if (!impl->checkAndStoreDataForLevel( SERIE_LEVEL, dataMap ))
       if (!impl->checkAndStoreDataForLevel( STUDY_LEVEL, dataMap ))
 	impl->checkAndStoreDataForLevel( PATIENT_LEVEL, dataMap );
-
-    impl->imageDoc->clear();
-    impl->imageDoc->add( *new Field( FieldNameDocumentDicomLevel.c_str(), QRLevelStringMap.find( IMAGE_LEVEL )->second.c_str(), Field::STORE_YES| Field::INDEX_UNTOKENIZED| Field::TERMVECTOR_NO ) );
-    for(TagValueMapType::const_iterator i=dataMap.begin(); i != dataMap.end(); i++) {
-      const Lucene_Entry &tag = DcmQRLuceneTagKeyMap.find( i->first )->second;
-      int tokenizeFlag =  (tag.fieldType == Lucene_Entry::NAME_TYPE || tag.fieldType == Lucene_Entry::TEXT_TYPE) ? Field::INDEX_TOKENIZED : Field::INDEX_UNTOKENIZED;
-      impl->imageDoc->add( *new Field( DcmQRLuceneTagKeyMap.find( i->first )->second.tagStr.c_str(), i->second.c_str() , Field::STORE_YES| tokenizeFlag | Field::TERMVECTOR_NO ) );
-    }
-    impl->imageDoc->add( *new Field( FieldNameObjectStatus.c_str(), ((isNew) ? ObjectStatusIsNew : ObjectStatusIsNotNew).c_str(), Field::STORE_YES| Field::INDEX_UNTOKENIZED| Field::TERMVECTOR_NO ) );
-    impl->imageDoc->add( *new Field( FieldNameDicomFileName.c_str(), LuceneString(imageFileName).c_str(), Field::STORE_YES| Field::INDEX_UNTOKENIZED| Field::TERMVECTOR_NO ) );
-    impl->imageDoc->add( *new Field( FieldNameDCM_SOPClassUID.c_str(), LuceneString(SOPClassUID).c_str(), Field::STORE_YES| Field::INDEX_UNTOKENIZED| Field::TERMVECTOR_NO ) );
     
-    /* InstanceDescription */
-    OFBool useDescrTag = OFTrue;
-    DcmTagKey descrTag = DCM_ImageComments;
-    LuceneString description;
-    if (SOPClassUID != NULL)
-    {
-        /* fill in value depending on SOP class UID (content might be improved) */
-        if (strcmp(SOPClassUID, UID_GrayscaleSoftcopyPresentationStateStorage) == 0)
-        {
-            descrTag = DCM_ContentDescription;
-        } else if (strcmp(SOPClassUID, UID_HardcopyGrayscaleImageStorage) == 0)
-        {
-	    description = "Hardcopy Grayscale Image";
-            useDescrTag = OFFalse;
-        } else if ((strcmp(SOPClassUID, UID_BasicTextSR) == 0) ||
-                   (strcmp(SOPClassUID, UID_EnhancedSR) == 0) ||
-                   (strcmp(SOPClassUID, UID_ComprehensiveSR) == 0))
-        {
-            OFString string;
-            description = "unknown SR";
-            const char *name = dcmFindNameOfUID(SOPClassUID);
-            if (name != NULL)
-                description = name;
-            if (dset->findAndGetOFString(DCM_VerificationFlag, string) == EC_Normal)
-            {
-                description += LuceneString( ", " );
-                description += LuceneString( string.c_str() );
-            }
-            if (dset->findAndGetOFString(DCM_CompletionFlag, string) == EC_Normal)
-            {
-                description += LuceneString(", ");
-                description += LuceneString(string.c_str());
-            }
-            if (dset->findAndGetOFString(DCM_CompletionFlagDescription, string) == EC_Normal)
-            {
-                description += LuceneString(", ");
-                description += LuceneString(string.c_str());
-            }
-            useDescrTag = OFFalse;
-        } else if (strcmp(SOPClassUID, UID_StoredPrintStorage) == 0)
-        {
-	    description = LuceneString("Stored Print");
-            useDescrTag = OFFalse;
-        }
+    if (verbose) {
+      cout << "StoreInstance:" << imageFileName << ":" << dataMap[ DCM_PatientsName ].toStdString() << endl;
     }
-    /* get description from attribute specified above */
-    if (useDescrTag)
-    {
-        OFString string;
-        /* return value is irrelevant */
-        dset->findAndGetOFString(descrTag, string);
-	description = string.c_str();
-    }
-    /* is dataset digitally signed? */
-        DcmStack stack;
-        if (dset->search(DCM_DigitalSignaturesSequence, stack, ESM_fromHere, OFTrue /* searchIntoSub */) == EC_Normal)
-        {
-            /* in principle it should be checked whether there is _any_ non-empty digital signatures sequence, but ... */
-            if (((DcmSequenceOfItems *)stack.top())->card() > 0)
-            {
-                if (description.length() > 0)
-		    description += LuceneString(" (Signed)");
-                else
-		    description += LuceneString("Signed Instance");
-            }
-        }
-    impl->imageDoc->add( *new Field( FieldNameInstanceDescription.c_str(), description.c_str(), Field::STORE_YES| Field::INDEX_TOKENIZED| Field::TERMVECTOR_NO ) );
-    impl->indexwriter->addDocument(impl->imageDoc.get());
-    impl->imageDoc->clear();
+      
+    StringValueMapType stringDataMap;
+
+    stringDataMap[ FieldNameObjectStatus ] = (isNew) ? ObjectStatusIsNew : ObjectStatusIsNotNew;
+    stringDataMap[ FieldNameDicomFileName ] = imageFileName;
+    stringDataMap[ FieldNameDCM_SOPClassUID ] = SOPClassUID;
+
+    impl->addDocument( IMAGE_LEVEL, dataMap, stringDataMap );
+    
     return EC_Normal;
 }
 

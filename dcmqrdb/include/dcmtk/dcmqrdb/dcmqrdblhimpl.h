@@ -35,9 +35,11 @@
 #include <boost/shared_ptr.hpp>
 #include <boost/filesystem/operations.hpp>
 #include <boost/filesystem/path.hpp>
+#include <boost/date_time/posix_time/posix_time_types.hpp>
 
 #include <map>
 #include <list>
+#include <set>
 #include <string>
 
 
@@ -60,22 +62,43 @@ namespace fs =boost::filesystem;
 
 typedef std::list< DcmTagKey > TagListType;
 typedef std::map< DcmTagKey, LuceneString > TagValueMapType;
+typedef std::map< LuceneString, LuceneString > StringValueMapType;
 typedef std::map< DcmTagKey, std::string > TagStdValueMapType;
 typedef std::multimap< DcmTagKey, std::string > TagMultiStdValueMapType;
 
+struct DicomUID {
+  Lucene_LEVEL level;
+  LuceneString uid;
+  DicomUID( Lucene_LEVEL l, const LuceneString &id ): level( l), uid(id) {}
+  DicomUID() {}
+  bool operator<(const DicomUID &other) const;
+};
 
-
+typedef set< DicomUID > UIDSetType;
 
 class DcmQRDBLHImpl { // TODO: implement Singleton based IndexWriter and IndexSearcher
+  protected:
+  static const std::string storageAreaToIndexPath(const string &storageArea);
+  shared_ptr<Analyzer> analyzer;
+  shared_ptr<IndexWriter> indexwriter;
+  shared_ptr<IndexSearcher> indexsearcher;
+  shared_ptr<boost::posix_time::ptime> first_modified;
+  UIDSetType newUIDSet; // set of UIDs modified since last searcher flush
+  string getIndexPath(void);
+  void flushIndex(bool force=false);
   public:
   enum Result {
     good,
     error
   };
   const string storageArea;
-  shared_ptr<Analyzer> analyzer;
-  shared_ptr<IndexWriter> indexwriter;
-  shared_ptr<IndexSearcher> indexsearcher;
+  
+  IndexReader& getIndexReader();
+  void addDocument( Lucene_LEVEL level, const TagValueMapType &tagDataset, const StringValueMapType &stringDataset=StringValueMapType() );
+  bool sopInstanceExists( const LuceneString &sopInstanceUID );
+  void findQuery(Query* query, int upToDateMillis, const DicomUID &uid);
+  void moveQuery(Query* query, int upToDateMillis, const DicomUID &uid);
+
   scoped_ptr<Document> imageDoc;
   scoped_ptr<Hits> findResponseHits;
   scoped_ptr<BooleanQuery> findRequest;
@@ -89,15 +112,8 @@ class DcmQRDBLHImpl { // TODO: implement Singleton based IndexWriter and IndexSe
 
   bool checkAndStoreDataForLevel( Lucene_LEVEL level, TagValueMapType &dataset);
   DcmQRDBLHImpl(const string &s, DcmQRLuceneIndexType i, Result &r);
-  DcmQRDBLHImpl(DcmQRDBLHImpl &other, Result &r);
   ~DcmQRDBLHImpl();
-  string getIndexPath(void);
-  void refreshForSearch(void);
   static bool indexExists( const string &s );
-  private:
-  static const std::string storageAreaToIndexPath(const string &storageArea);
-  Result recreateSearcher(void);
-  
 };
 
 

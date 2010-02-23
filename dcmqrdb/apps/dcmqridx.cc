@@ -184,6 +184,10 @@ int main (int argc, char *argv[])
     if (cond.good())
     {
         hdlp->setDebugLevel(opt_debug ? 3 : 0);
+#ifdef WITH_LUCENE
+        if (opt_verbose)
+	  dynamic_cast<DcmQueryRetrieveLuceneIndexHandle*>(hdlp)->setVerbose( true );
+#endif
 #ifndef WITH_LUCENE
 #ifndef WITH_SQL_DATABASE
         dynamic_cast<DcmQueryRetrieveIndexDatabaseHandle*>(hdlp)->enableQuotaSystem(OFFalse); /* disable deletion of images */
