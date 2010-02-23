@@ -47,13 +47,11 @@ public:
     const OFString &storageArea,
     DcmQRLuceneIndexType indexType,
     OFCondition& result);
-  DcmQueryRetrieveLuceneIndexHandle(
-    DcmQueryRetrieveLuceneIndexHandle &other,
-    OFCondition& result);
   ~DcmQueryRetrieveLuceneIndexHandle();
   void printIndexFile(void);
   virtual OFCondition storeRequest(const char* SOPClassUID, const char* SOPInstanceUID, const char* imageFileName, DcmQueryRetrieveDatabaseStatus* status, OFBool isNew = OFTrue);
   static bool indexExists( const OFString &s );
+  void setVerbose(bool v);
 private:
   virtual void setIdentifierChecking(OFBool checkFind, OFBool checkMove);
   virtual void setDebugLevel(int debugLevel);
@@ -78,6 +76,7 @@ private:
 
   /// current debug level
   int debugLevel;
+  bool verbose;
     
   boost::scoped_ptr<DcmQRDBLHImpl> impl;
 
