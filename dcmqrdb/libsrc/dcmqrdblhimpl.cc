@@ -26,16 +26,25 @@
 
 */
 
-
+#include <boost/date_time/posix_time/posix_time.hpp>
 #include "dcmtk/dcmqrdb/dcmqrdbl-taglist.h"
 #include "dcmtk/dcmqrdb/dcmqrdblhimpl.h"
+
 
 #include <iostream>
 
 using namespace std;
 
 
+namespace pt = boost::posix_time;
 
+
+bool DicomUID::operator<(const DicomUID &other) const {
+  if (this->level < other.level) return true;
+  if (this->level > other.level) return false;
+  if (this->uid.compare(other.uid) < 0) return true;
+  return false;
+}
 
 
 bool DcmQRDBLHImpl::indexExists( const string &s ) {
@@ -43,8 +52,9 @@ bool DcmQRDBLHImpl::indexExists( const string &s ) {
 }
 
 DcmQRDBLHImpl::DcmQRDBLHImpl(const string &storageArea,
-  DcmQRLuceneIndexType indexType,
-  Result& result):storageArea(storageArea), analyzer( new LowerCaseAnalyzer()),imageDoc( new Document),indexType( indexType ) 
+  DcmQRLuceneIndexType indexType, Result& result)
+  :analyzer( new LowerCaseAnalyzer()), first_modified(new pt::ptime(pt::pos_infin)), storageArea(storageArea), imageDoc( new Document),
+  indexType( indexType )
   {
   if (indexType == DcmQRLuceneWriter) {
     bool indexExists = false;
@@ -62,45 +72,33 @@ DcmQRDBLHImpl::DcmQRDBLHImpl(const string &storageArea,
       result = error;
     }
   }
-  result = recreateSearcher();
+  flushIndex();
+  result = good;
 }
 
-DcmQRDBLHImpl::DcmQRDBLHImpl(DcmQRDBLHImpl &other, Result &r)
-  :storageArea(other.storageArea), analyzer( other.analyzer ),imageDoc( new Document ),indexType( other.indexType )  {
-  if (indexType == DcmQRLuceneWriter) {
-    indexwriter = other.indexwriter;
-  }
-  indexsearcher = other.indexsearcher;
-  r = good;
-}
+void DcmQRDBLHImpl::flushIndex(bool force) {
+  if (force || newUIDSet.size() > 0)
+    if (indexType == DcmQRLuceneWriter)
+      indexwriter->flush();
 
-
-void DcmQRDBLHImpl::refreshForSearch(void) {
-  if (indexType == DcmQRLuceneWriter)
-    indexwriter->flush();
-  recreateSearcher();
-}
-
-
-DcmQRDBLHImpl::Result DcmQRDBLHImpl::recreateSearcher(void) {
-  if (indexType == DcmQRLuceneWriter) {
-    try {
-      indexsearcher.reset( new IndexSearcher( indexwriter->getDirectory() ) );
-    } catch(CLuceneError &e) {
-      cerr << "Exception while creation of IndexSearcher caught:" << e.what() << endl;
-      return error;
-    }
-  } else if (indexType == DcmQRLuceneReader && !indexsearcher) {
-    try {
-      indexsearcher.reset( new IndexSearcher( getIndexPath().c_str()) );
-    } catch(CLuceneError &e) {
-      cerr << "Exception while creation of IndexSearcher caught:" << e.what() << endl;
-      return error;
+  if (!indexsearcher || force || newUIDSet.size() > 0) {
+    if (indexType == DcmQRLuceneWriter) {
+      try {
+	indexsearcher.reset( new IndexSearcher( indexwriter->getDirectory() ) );
+      } catch(CLuceneError &e) {
+	cerr << "Exception while creation of IndexSearcher caught:" << e.what() << endl;
+      }
+    } else if (indexType == DcmQRLuceneReader) {
+      try {
+	indexsearcher.reset( new IndexSearcher( getIndexPath().c_str()) );
+      } catch(CLuceneError &e) {
+	cerr << "Exception while creation of IndexSearcher caught:" << e.what() << endl;
+      }
     }
   }
-  return good;
+  newUIDSet.clear();
+  *first_modified = pt::pos_infin;
 }
-
 
 DcmQRDBLHImpl::~DcmQRDBLHImpl() {
   if (indexType == DcmQRLuceneWriter) {
@@ -140,27 +138,86 @@ bool DcmQRDBLHImpl::checkAndStoreDataForLevel( Lucene_LEVEL level, TagValueMapTy
   lookupQuery.add( new TermQuery( new Term( UIDTagEntry.tagStr.c_str(), uidDataIter->second.c_str() ) ), BooleanClause::MUST );
 
 // TODO: remove this dumb thing ---- snip -----  
-refreshForSearch();
+flushIndex();
 // TODO: remove this dumb thing ---- snap -----
   scoped_ptr<Hits> hits( indexsearcher->search(&lookupQuery) );
   if (hits->length()>0) {
     return true;
   } else {
-    imageDoc->clear();
-    imageDoc->add( *new Field( FieldNameDocumentDicomLevel.c_str(), QRLevelStringMap.find( level )->second.c_str(), Field::STORE_YES| Field::INDEX_UNTOKENIZED| Field::TERMVECTOR_NO ) );
-    for(TagValueMapType::const_iterator i=dataset.begin(); i != dataset.end(); i++) {
-      if (i->second.length() > 0) {
-	const Lucene_Entry &tag = DcmQRLuceneTagKeyMap.find( i->first )->second;
-	if (tag.level <= level) {
-	  int tokenizeFlag =  (tag.fieldType == Lucene_Entry::NAME_TYPE || tag.fieldType == Lucene_Entry::TEXT_TYPE) ? Field::INDEX_TOKENIZED : Field::INDEX_UNTOKENIZED;
-	  imageDoc->add( *new Field( DcmQRLuceneTagKeyMap.find( i->first )->second.tagStr.c_str(), i->second.c_str() , Field::STORE_YES| tokenizeFlag | Field::TERMVECTOR_NO ) );
-	}
-      }
-    }
-    indexwriter->addDocument(imageDoc.get());
+    addDocument( level, dataset );
     return false;
   }
 }
 
+void DcmQRDBLHImpl::addDocument( Lucene_LEVEL level, const TagValueMapType &tagDataset, const StringValueMapType &stringDataset) {
+  imageDoc->clear();
+  imageDoc->add( *new Field( FieldNameDocumentDicomLevel.c_str(), 
+    QRLevelStringMap.find( level )->second.c_str(), 
+    Field::STORE_YES| Field::INDEX_UNTOKENIZED| Field::TERMVECTOR_NO ) );
+  
+  for( int l = level; l >= PATIENT_LEVEL; l--) {
+    TagValueMapType::const_iterator UIDIterator = tagDataset.find( LevelToUIDTag.find( (Lucene_LEVEL)l )->second.tag );
+    if ( UIDIterator == tagDataset.end() ) throw runtime_error("No UID defined for Document");
+    newUIDSet.insert( DicomUID( (Lucene_LEVEL)l, UIDIterator->second ) );
+  }
+
+  for(StringValueMapType::const_iterator i=stringDataset.begin(); i != stringDataset.end(); i++)
+    imageDoc->add( *new Field( i->first.c_str(), i->second.c_str(), Field::STORE_YES| Field::INDEX_UNTOKENIZED| Field::TERMVECTOR_NO ) );
+
+  for(TagValueMapType::const_iterator i=tagDataset.begin(); i != tagDataset.end(); i++) {
+    if (i->second.length() > 0) {
+      const Lucene_Entry &tag = DcmQRLuceneTagKeyMap.find( i->first )->second;
+      if (tag.level <= level) {
+	int tokenizeFlag =  (tag.fieldType == Lucene_Entry::NAME_TYPE || tag.fieldType == Lucene_Entry::TEXT_TYPE) ? Field::INDEX_TOKENIZED : Field::INDEX_UNTOKENIZED;
+	imageDoc->add( *new Field( tag.tagStr.c_str(), i->second.c_str() , Field::STORE_YES| tokenizeFlag | Field::TERMVECTOR_NO ) );
+      }
+    }
+  }
+  indexwriter->addDocument(imageDoc.get());
+  if (*first_modified == pt::pos_infin) *first_modified = pt::microsec_clock::local_time();
+}
+
+bool DcmQRDBLHImpl::sopInstanceExists( const LuceneString &sopInstanceUID ) {
+  if ( newUIDSet.find( DicomUID( IMAGE_LEVEL, sopInstanceUID ) ) != newUIDSet.end() ) return true;
+
+  TermQuery tq( new Term( FieldNameDCM_SOPInstanceUID.c_str(), sopInstanceUID.c_str() ) );
+  scoped_ptr<Hits> hits( indexsearcher->search(&tq) );
+  if (hits->length()>0) return true;
+  return false;
+}
+
+
+void DcmQRDBLHImpl::findQuery(Query* query, int upToDateMillis, const DicomUID &uid) {
+  bool queriedDataFlushed = false;
+  if (uid.uid.size() > 0) {
+    if ( newUIDSet.find( uid ) == newUIDSet.end() ) queriedDataFlushed = true;
+  }
+  if (!queriedDataFlushed) {
+    if ( *first_modified + pt::millisec( upToDateMillis ) < pt::microsec_clock::local_time() )
+      flushIndex();
+  }
+  findResponseHitCounter = 0;
+  findResponseHits.reset( indexsearcher->search(query) );
+}
+
+void DcmQRDBLHImpl::moveQuery(Query* query, int upToDateMillis, const DicomUID &uid) {
+  bool queriedDataFlushed = false;
+  if (uid.uid.size() > 0) {
+    if ( newUIDSet.find( uid ) == newUIDSet.end() ) queriedDataFlushed = true;
+  }
+  if (!queriedDataFlushed) {
+    if ( *first_modified + pt::millisec( upToDateMillis ) < pt::microsec_clock::local_time())
+      flushIndex();
+  }
+  moveResponseHitCounter = 0;
+  moveResponseHits.reset( indexsearcher->search(query) );
+}
+
+
+
+IndexReader& DcmQRDBLHImpl::getIndexReader() {
+  flushIndex();
+  return *indexsearcher->getReader();
+}
 
 
