@@ -581,8 +581,9 @@ dbdebug(1, "%s: start (line %i)", __FUNCTION__, __LINE__) ;
 	  CERR << __FUNCTION__ << ":\"" << imageFileName << "\" - no DCM_SOPInstanceUID, rejecting" << endl;
 	  return DcmQRLuceneNoSOPIUIDError;
       }
-      if (impl->sopInstanceExists(SOPInstanceUID)) {
-	CERR << "storeRequest():\"" << imageFileName << "\" - DCM_SOPInstanceUID already exists, rejecting" << endl;
+      string existingFileName;
+      if (impl->sopInstanceExists(SOPInstanceUID, existingFileName)) {
+	CERR << "storeRequest():\"" << imageFileName << "\" - DCM_SOPInstanceUID already exists in \"" << existingFileName << "\", rejecting" << endl;
 	return DcmQRLuceneDoubleSOPIUIDError;
       }
     }

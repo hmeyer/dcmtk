@@ -95,7 +95,7 @@ class DcmQRDBLHImpl { // TODO: implement Singleton based IndexWriter and IndexSe
   
   IndexReader& getIndexReader();
   void addDocument( Lucene_LEVEL level, const TagValueMapType &tagDataset, const StringValueMapType &stringDataset=StringValueMapType() );
-  bool sopInstanceExists( const LuceneString &sopInstanceUID );
+  bool sopInstanceExists( const LuceneString &sopInstanceUID, string &existingFileName );
   void findQuery(Query* query, int upToDateMillis, const DicomUID &uid);
   void moveQuery(Query* query, int upToDateMillis, const DicomUID &uid);
 
