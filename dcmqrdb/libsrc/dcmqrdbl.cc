@@ -54,6 +54,43 @@
 #include "dcmtk/dcmqrdb/dcmqrcnf.h"
 
 
+const OFConditionConst DcmQRLuceneNoSOPIUIDErrorC(OFM_imagectn, 0x002, OF_error, "DcmQR Lucene no DCM_SOPInstanceUID");
+const OFCondition DcmQRLuceneNoSOPIUIDError(DcmQRLuceneNoSOPIUIDErrorC);
+
+const OFConditionConst DcmQRLuceneDoubleSOPIUIDErrorC(OFM_imagectn, 0x003, OF_error, "DcmQR Lucene double DCM_SOPInstanceUID");
+const OFCondition DcmQRLuceneDoubleSOPIUIDError(DcmQRLuceneDoubleSOPIUIDErrorC);
+
+const OFConditionConst DcmQRLuceneIndexOpenErrorC(OFM_imagectn, 0x018, OF_error, "Could not open Lucene Index");
+const OFCondition DcmQRLuceneIndexOpenError(DcmQRLuceneIndexOpenErrorC);
+
+const OFConditionConst DcmQRLuceneIndex_FIND_Failed_UnableToProcessC(OFM_imagectn, 0x019, OF_error, "STATUS_FIND_Failed_UnableToProcess");
+const OFCondition DcmQRLuceneIndex_FIND_Failed_UnableToProcess(DcmQRLuceneIndex_FIND_Failed_UnableToProcessC);
+
+const OFConditionConst DcmQRLuceneIndex_FIND_Refused_OutOfResourcesC(OFM_imagectn, 0x01A, OF_error, "STATUS_FIND_Refused_OutOfResources");
+const OFCondition DcmQRLuceneIndex_FIND_Refused_OutOfResources(DcmQRLuceneIndex_FIND_Refused_OutOfResourcesC);
+
+const OFConditionConst DcmQRLuceneIndex_FIND_Refused_SOPClassNotSupportedC(OFM_imagectn, 0x01B, OF_error, "STATUS_FIND_Refused_SOPClassNotSupported");
+const OFCondition DcmQRLuceneIndex_FIND_Refused_SOPClassNotSupported(DcmQRLuceneIndex_FIND_Refused_SOPClassNotSupportedC);
+
+const OFConditionConst DcmQRLuceneIndex_FIND_Failed_IdentifierDoesNotMatchSOPClassC(OFM_imagectn, 0x01C, OF_error, "STATUS_FIND_Failed_IdentifierDoesNotMatchSOPClass");
+const OFCondition DcmQRLuceneIndex_FIND_Failed_IdentifierDoesNotMatchSOPClass(DcmQRLuceneIndex_FIND_Failed_IdentifierDoesNotMatchSOPClassC);
+
+const OFConditionConst DcmQRLuceneIndex_FIND_Failed_Missing_QR_LevelC(OFM_imagectn, 0x01D, OF_error, "STATUS_FIND_Failed_Missing_QR_Level");
+const OFCondition DcmQRLuceneIndex_FIND_Failed_Missing_QR_Level(DcmQRLuceneIndex_FIND_Failed_Missing_QR_LevelC);
+
+const OFConditionConst DcmQRLuceneIndex_MOVE_Failed_SOPClassNotSupportedC(OFM_imagectn, 0x01E, OF_error, "STATUS_MOVE_Failed_SOPClassNotSupported");
+const OFCondition DcmQRLuceneIndex_MOVE_Failed_SOPClassNotSupported(DcmQRLuceneIndex_MOVE_Failed_SOPClassNotSupportedC);
+
+const OFConditionConst DcmQRLuceneIndex_MOVE_Failed_IdentifierDoesNotMatchSOPClassC(OFM_imagectn, 0x01F, OF_error, "STATUS_MOVE_Failed_IdentifierDoesNotMatchSOPClass");
+const OFCondition DcmQRLuceneIndex_MOVE_Failed_IdentifierDoesNotMatchSOPClass(DcmQRLuceneIndex_MOVE_Failed_IdentifierDoesNotMatchSOPClassC);
+
+const OFConditionConst DcmQRLuceneIndex_MOVE_Failed_UnableToProcessC(OFM_imagectn, 0x020, OF_error, "STATUS_MOVE_Failed_UnableToProcess");
+const OFCondition DcmQRLuceneIndex_MOVE_Failed_UnableToProcess(DcmQRLuceneIndex_MOVE_Failed_UnableToProcessC);
+
+const OFConditionConst DcmQRLuceneIndex_STORE_Error_CannotUnderstandC(OFM_imagectn, 0x021, OF_error, "STATUS_STORE_Error_CannotUnderstand");
+const OFCondition DcmQRLuceneIndex_STORE_Error_CannotUnderstand(DcmQRLuceneIndex_STORE_Error_CannotUnderstandC);
+
+
 const int IndexRequestUpToDateMillis = 5000;
 
 bool DcmQueryRetrieveLuceneIndexHandle::indexExists( const OFString &s ) {
@@ -67,7 +104,7 @@ DcmQueryRetrieveLuceneIndexHandle::DcmQueryRetrieveLuceneIndexHandle(
   OFCondition& result):doCheckFindIdentifier(OFFalse),doCheckMoveIdentifier(OFFalse),debugLevel(10),verbose(false) {
     DcmQRDBLHImpl::Result r;
     impl.reset( new DcmQRDBLHImpl(storageArea.c_str(), indexType, r) );
-    result = (r==DcmQRDBLHImpl::good) ? EC_Normal : DcmQRLuceneIndexError;
+    result = (r==DcmQRDBLHImpl::good) ? EC_Normal : DcmQRLuceneIndexOpenError;
   }
   
     
@@ -232,9 +269,9 @@ dbdebug(1, "%s: start (line %i)", __FUNCTION__, __LINE__) ;
   if (qrClassI != StringQRClassMap.end() && (qrClassI->second.qtype == QueryInfo::MOVE || qrClassI->second.qtype == QueryInfo::GET)) {
     rootLevel = qrClassI->second.qclass ;
   } else {
-    dbdebug(1, "%s: STATUS_FIND_Refused_SOPClassNotSupported", __FUNCTION__) ;
+    dbdebug(1, "%s: STATUS_MOVE_Failed_SOPClassNotSupported", __FUNCTION__) ;
     status->setStatus(STATUS_MOVE_Failed_SOPClassNotSupported);
-    return (DcmQRLuceneIndexError) ;
+    return (DcmQRLuceneIndex_MOVE_Failed_SOPClassNotSupported) ;
   }
   // Gather all data from Request
   TagMultiStdValueMapType dataMap;
@@ -256,9 +293,9 @@ dbdebug(1, "%s: start (line %i)", __FUNCTION__, __LINE__) ;
   Lucene_LEVEL queryLevel = PATIENT_LEVEL;
   TagMultiStdValueMapType::iterator dataMapIter = dataMap.find( DCM_QueryRetrieveLevel );
   if (dataMapIter == dataMap.end()) {
-      status->setStatus(STATUS_FIND_Failed_IdentifierDoesNotMatchSOPClass);
+      status->setStatus(STATUS_MOVE_Failed_IdentifierDoesNotMatchSOPClass);
       dbdebug(1,"%s: missing Query/Retrieve Level",__FUNCTION__);
-      return (DcmQRLuceneIndexError) ;
+      return (DcmQRLuceneIndex_MOVE_Failed_IdentifierDoesNotMatchSOPClass) ;
   } else {
     std::string qrLevelString = dataMapIter->second;
     // Skip this line if you want strict comparison
@@ -269,7 +306,7 @@ dbdebug(1, "%s: start (line %i)", __FUNCTION__, __LINE__) ;
     } else {
       dbdebug(1, "%s : Illegal query level (%s)",__FUNCTION__, qrLevelString.c_str()) ;
       status->setStatus(STATUS_MOVE_Failed_UnableToProcess);
-      return (DcmQRLuceneIndexError) ;
+      return (DcmQRLuceneIndex_MOVE_Failed_UnableToProcess) ;
     }
     dataMap.erase( dataMapIter ); // Remove the QueryLevel - since we found it
   }
@@ -288,7 +325,7 @@ dbdebug(1, "%s: start (line %i)", __FUNCTION__, __LINE__) ;
   if (doCheckFindIdentifier && queryLevel > maxLevel) {
     status->setStatus(STATUS_MOVE_Failed_UnableToProcess);
     dbdebug(1, "%s : QR-Level incompatible with Information Model (level %i)",__FUNCTION__,queryLevel) ;
-    return (DcmQRLuceneIndexError) ;
+    return (DcmQRLuceneIndex_MOVE_Failed_UnableToProcess) ;
   }
   queryLevel = std::min(maxLevel,queryLevel);
   
@@ -327,11 +364,11 @@ dbdebug(1, "%s: start (line %i)", __FUNCTION__, __LINE__) ;
     } else if (entryData.level < queryLevel) {
 	dbdebug(1, "%s :Multiple Unique Key found above Query Level (level %i)",__FUNCTION__,entryData.level) ;
 	status->setStatus(STATUS_MOVE_Failed_IdentifierDoesNotMatchSOPClass);
-	return (DcmQRLuceneIndexError) ;
+	return (DcmQRLuceneIndex_MOVE_Failed_IdentifierDoesNotMatchSOPClass) ;
     } else { // entryData.level > queryLevel
       dbdebug(1, "%s :Key (%s,level %i)found beyond query level (level %i)",__FUNCTION__,entryData.tag.toString().c_str(), entryData.level, queryLevel) ;
       status->setStatus(STATUS_MOVE_Failed_UnableToProcess);
-      return (DcmQRLuceneIndexError) ;
+      return (DcmQRLuceneIndex_MOVE_Failed_UnableToProcess) ;
     }
   }
   if (multiQuery->getClauseCount() != 0)
@@ -372,7 +409,7 @@ dbdebug(1, "%s: start (line %i)", __FUNCTION__, __LINE__) ;
     if ( *findResponseIdentifiers == NULL ) {
 	dbdebug(1, "%s : could allocate ResponseIdentifiers DataSet - STATUS_FIND_Refused_OutOfResources\n", __FUNCTION__) ;
 	status->setStatus(STATUS_FIND_Refused_OutOfResources);
-        return (DcmQRLuceneIndexError);
+        return (DcmQRLuceneIndex_FIND_Refused_OutOfResources);
     }
 
     /*** Put responses
@@ -400,19 +437,19 @@ dbdebug(1, "%s: start (line %i)", __FUNCTION__, __LINE__) ;
 	DcmElement *dce = newDicomElement( *i );
 	if (dce == NULL) {
 	    status->setStatus(STATUS_FIND_Refused_OutOfResources);
-	    return DcmQRLuceneIndexError;
+	    return DcmQRLuceneIndex_FIND_Refused_OutOfResources;
 	}
 	OFCondition ec = dce->putString(responseValue.c_str());
 	if (ec != EC_Normal) {
 	    CERR << __FUNCTION__ << ": cannot putString()" << endl;
 	    status->setStatus(STATUS_FIND_Failed_UnableToProcess);
-	    return DcmQRLuceneIndexError;
+	    return DcmQRLuceneIndex_FIND_Failed_UnableToProcess;
 	}
 	ec = (*findResponseIdentifiers)->insert(dce, OFTrue /*replaceOld*/);
 	if (ec != EC_Normal) {
 	    CERR << __FUNCTION__ << ": cannot insert()" << endl;
 	    status->setStatus(STATUS_FIND_Failed_UnableToProcess);
-	    return DcmQRLuceneIndexError;
+	    return DcmQRLuceneIndex_FIND_Failed_UnableToProcess;
 	}
       }
       DU_putStringDOElement(*findResponseIdentifiers,
@@ -442,7 +479,7 @@ dbdebug(1, "%s: start (line %i)", __FUNCTION__, __LINE__) ;
   } else {
       dbdebug(1, "%s: STATUS_FIND_Refused_SOPClassNotSupported", __FUNCTION__) ;
       status->setStatus(STATUS_FIND_Refused_SOPClassNotSupported);
-      return (DcmQRLuceneIndexError) ;
+      return (DcmQRLuceneIndex_FIND_Refused_SOPClassNotSupported) ;
   }
 
   // Gather all data from Request
@@ -467,7 +504,7 @@ dbdebug(1, "%s: start (line %i)", __FUNCTION__, __LINE__) ;
   if (dataMapIter == dataMap.end()) {
       status->setStatus(STATUS_FIND_Failed_IdentifierDoesNotMatchSOPClass);
       dbdebug(1,"%s: missing Query/Retrieve Level",__FUNCTION__);
-      return (DcmQRLuceneIndexError) ;
+      return (DcmQRLuceneIndex_FIND_Failed_Missing_QR_Level) ;
   } else {
     std::string qrLevelString = dataMapIter->second;
     // Skip this line if you want strict comparison
@@ -478,7 +515,7 @@ dbdebug(1, "%s: start (line %i)", __FUNCTION__, __LINE__) ;
     } else {
       dbdebug(1, "%s : Illegal query level (%s)",__FUNCTION__, qrLevelString.c_str()) ;
       status->setStatus(STATUS_FIND_Failed_UnableToProcess);
-      return (DcmQRLuceneIndexError) ;
+      return (DcmQRLuceneIndex_FIND_Failed_UnableToProcess) ;
     }
     dataMap.erase( dataMapIter ); // Remove the QueryLevel - since we found it
   }
@@ -491,9 +528,9 @@ dbdebug(1, "%s: start (line %i)", __FUNCTION__, __LINE__) ;
   Lucene_LEVEL maxLevel = IMAGE_LEVEL;
   if (rootLevel == PATIENT_STUDY) maxLevel = STUDY_LEVEL;
   if (doCheckFindIdentifier && queryLevel > maxLevel) {
-    status->setStatus(STATUS_MOVE_Failed_UnableToProcess);
+    status->setStatus(STATUS_FIND_Failed_UnableToProcess);
     dbdebug(1, "%s : QR-Level incompatible with Information Model (level %i)",__FUNCTION__,queryLevel) ;
-    return (DcmQRLuceneIndexError) ;
+    return (DcmQRLuceneIndex_FIND_Failed_UnableToProcess) ;
   }
   queryLevel = std::min(maxLevel,queryLevel);
   
@@ -528,12 +565,12 @@ dbdebug(1, "%s: start (line %i)", __FUNCTION__, __LINE__) ;
       if (entryData.keyAttr != Lucene_Entry::UNIQUE_KEY) {
 	dbdebug(1, "%s :Non Unique Key found (level %i)",__FUNCTION__,entryData.level) ;
 	status->setStatus(STATUS_FIND_Failed_IdentifierDoesNotMatchSOPClass);
-	return (DcmQRLuceneIndexError) ;
+	return (DcmQRLuceneIndex_FIND_Failed_IdentifierDoesNotMatchSOPClass) ;
       }
     } else { // entryData.level > queryLevel
       dbdebug(1, "%s :Key (%s,level %i)found beyond query level (level %i)",__FUNCTION__,entryData.tag.toString().c_str(), entryData.level, queryLevel) ;
       status->setStatus(STATUS_FIND_Failed_UnableToProcess);
-      return (DcmQRLuceneIndexError) ;
+      return (DcmQRLuceneIndex_FIND_Failed_UnableToProcess) ;
     }
     // add to findRequestList
     if (entryData.level <= queryLevel)
@@ -574,7 +611,7 @@ dbdebug(1, "%s: start (line %i)", __FUNCTION__, __LINE__) ;
       CERR << "Cannot open file: " << imageFileName << ": "
            << strerror(errno) << endl;
       status->setStatus(STATUS_STORE_Error_CannotUnderstand);
-      return (DcmQRLuceneIndexError);
+      return (DcmQRLuceneIndex_STORE_Error_CannotUnderstand);
     }
     {
       if (SOPInstanceUID == NULL) {

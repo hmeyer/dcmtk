@@ -32,13 +32,6 @@ class DcmQueryRetrieveConfig;
 class DcmQRDBLHImpl;
 enum DcmQRLuceneIndexType;
 
-const OFConditionConst DcmQRLuceneIndexErrorC(OFM_imagectn, 0x001, OF_error, "DcmQR Lucene Index Error");
-const OFCondition DcmQRLuceneIndexError(DcmQRLuceneIndexErrorC);
-const OFConditionConst DcmQRLuceneNoSOPIUIDErrorC(OFM_imagectn, 0x002, OF_error, "DcmQR Lucene no DCM_SOPInstanceUID");
-const OFCondition DcmQRLuceneNoSOPIUIDError(DcmQRLuceneNoSOPIUIDErrorC);
-const OFConditionConst DcmQRLuceneDoubleSOPIUIDErrorC(OFM_imagectn, 0x003, OF_error, "DcmQR Lucene double DCM_SOPInstanceUID");
-const OFCondition DcmQRLuceneDoubleSOPIUIDError(DcmQRLuceneDoubleSOPIUIDErrorC);
-
 
 class DcmQueryRetrieveLuceneIndexHandle : public DcmQueryRetrieveDatabaseHandle
 {
