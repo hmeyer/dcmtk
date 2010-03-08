@@ -163,6 +163,15 @@ int DcmQueryRetrieveConfig::aeTitlesForSymbolicName(const char *symbolicName, co
 
 }
 
+const char *DcmQueryRetrieveConfig::symbolicNameForAETitle(const char *aeTitle) const {
+    for (int i=0; i<CNF_HETable.noOfHostEntries; i++)
+      if ( CNF_HETable.HostEntries[i].noOfPeers == 1 
+	&& strcmp(aeTitle, CNF_HETable.HostEntries[i].Peers[0].ApplicationTitle) == 0) 
+	return CNF_HETable.HostEntries[i].SymbolicName;
+    return NULL;
+}
+
+
 const char *DcmQueryRetrieveConfig::vendorForPeerAETitle(const char *peerAETitle) const
 {
     int i = 0;
@@ -980,6 +989,11 @@ int DcmQueryRetrieveConfig::peerForAETitle(const char *AETitle, const char **Hos
    }
 
    return(0);         /* Peer not found */
+}
+
+void DcmQueryRetrieveConfig::getAEList( DcmQueryRetrieveConfigAEEntry ** const AEList, int *numAEs ) const {
+  *AEList = CNF_Config.AEEntries;
+  *numAEs = CNF_Config.noOfAEEntries;
 }
 
 

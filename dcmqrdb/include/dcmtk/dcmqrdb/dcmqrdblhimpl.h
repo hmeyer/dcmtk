@@ -32,56 +32,73 @@
 #include <CLucene.h>
 
 #include <boost/scoped_ptr.hpp>
+#include <boost/shared_ptr.hpp>
 #include <boost/filesystem/operations.hpp>
 #include <boost/filesystem/path.hpp>
+#include <boost/date_time/posix_time/posix_time_types.hpp>
 
 #include <map>
 #include <list>
+#include <set>
+#include <string>
 
 
-#include "dcmtk/dcmqrdb/dcmqrdbl-taglist.h"
-#include "dcmtk/dcmqrdb/dcmqrdbl.h"
+#include "dcmtk/dcmqrdb/lucenestring.h"
+#include "dcmtk/dcmqrdb/luceneenums.h"
+
 
 
 using namespace lucene::index;
 using namespace lucene::analysis;
 using namespace lucene::document;
 using namespace lucene::search;
+using namespace std;
 using boost::scoped_ptr;
+using boost::shared_ptr;
 namespace fs =boost::filesystem;
 
+#include "lowercaseanalyzer.h"
 
 
 typedef std::list< DcmTagKey > TagListType;
 typedef std::map< DcmTagKey, LuceneString > TagValueMapType;
+typedef std::map< LuceneString, LuceneString > StringValueMapType;
 typedef std::map< DcmTagKey, std::string > TagStdValueMapType;
 typedef std::multimap< DcmTagKey, std::string > TagMultiStdValueMapType;
 
-
-const OFConditionConst DcmQRLuceneIndexErrorC(OFM_imagectn, 0x001, OF_error, "DcmQR Lucene Index Error");
-const OFCondition DcmQRLuceneIndexError(DcmQRLuceneIndexErrorC);
-const OFConditionConst DcmQRLuceneNoSOPIUIDErrorC(OFM_imagectn, 0x002, OF_error, "DcmQR Lucene no DCM_SOPInstanceUID");
-const OFCondition DcmQRLuceneNoSOPIUIDError(DcmQRLuceneNoSOPIUIDErrorC);
-const OFConditionConst DcmQRLuceneDoubleSOPIUIDErrorC(OFM_imagectn, 0x003, OF_error, "DcmQR Lucene double DCM_SOPInstanceUID");
-const OFCondition DcmQRLuceneDoubleSOPIUIDError(DcmQRLuceneDoubleSOPIUIDErrorC);
-
-
-class LowerCaseAnalyzer: public Analyzer {
-public:  
-  LowerCaseAnalyzer();
-  virtual ~LowerCaseAnalyzer();
-    TokenStream* tokenStream(const TCHAR* fieldName, CL_NS(util)::Reader* reader);
-	TokenStream* reusableTokenStream(const TCHAR* fieldName, CL_NS(util)::Reader* reader);
+struct DicomUID {
+  Lucene_LEVEL level;
+  LuceneString uid;
+  DicomUID( Lucene_LEVEL l, const LuceneString &id ): level( l), uid(id) {}
+  DicomUID() {}
+  bool operator<(const DicomUID &other) const;
 };
 
-
+typedef set< DicomUID > UIDSetType;
 
 class DcmQRDBLHImpl { // TODO: implement Singleton based IndexWriter and IndexSearcher
+  protected:
+  static const std::string storageAreaToIndexPath(const string &storageArea);
+  shared_ptr<Analyzer> analyzer;
+  shared_ptr<IndexWriter> indexwriter;
+  shared_ptr<IndexSearcher> indexsearcher;
+  shared_ptr<boost::posix_time::ptime> first_modified;
+  UIDSetType newUIDSet; // set of UIDs modified since last searcher flush
+  string getIndexPath(void);
+  void flushIndex(bool force=false);
   public:
-  const OFString storageArea;
-  scoped_ptr<Analyzer> analyzer;
-  scoped_ptr<IndexWriter> indexwriter;
-  scoped_ptr<IndexSearcher> indexsearcher;
+  enum Result {
+    good,
+    error
+  };
+  const string storageArea;
+  
+  IndexReader& getIndexReader();
+  void addDocument( Lucene_LEVEL level, const TagValueMapType &tagDataset, const StringValueMapType &stringDataset=StringValueMapType() );
+  bool sopInstanceExists( const LuceneString &sopInstanceUID, string &existingFileName );
+  void findQuery(Query* query, int upToDateMillis, const DicomUID &uid);
+  void moveQuery(Query* query, int upToDateMillis, const DicomUID &uid);
+
   scoped_ptr<Document> imageDoc;
   scoped_ptr<Hits> findResponseHits;
   scoped_ptr<BooleanQuery> findRequest;
@@ -93,15 +110,10 @@ class DcmQRDBLHImpl { // TODO: implement Singleton based IndexWriter and IndexSe
   unsigned int moveResponseHitCounter;
   const DcmQRLuceneIndexType indexType;
 
-  DcmQRDBLHImpl(const OFString &s, DcmQRLuceneIndexType i, OFCondition &r);
-  ~DcmQRDBLHImpl();
   bool checkAndStoreDataForLevel( Lucene_LEVEL level, TagValueMapType &dataset);
-  OFString getIndexPath(void);
-  void refreshForSearch(void);
-  static bool indexExists( const OFString &s );
-  private:
-  static const std::string storageAreaToIndexPath(const OFString &storageArea);
-  OFCondition recreateSearcher(void);
+  DcmQRDBLHImpl(const string &s, DcmQRLuceneIndexType i, Result &r);
+  ~DcmQRDBLHImpl();
+  static bool indexExists( const string &s );
 };
 
 
