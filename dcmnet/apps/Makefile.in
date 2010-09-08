@@ -16,11 +16,17 @@ include $(configdir)/@common_makefile@
 ofstddir = $(top_srcdir)/../ofstd
 dcmdatadir = $(top_srcdir)/../dcmdata
 dcmtlsdir = $(top_srcdir)/../dcmtls
+dcmjpegdir = $(top_srcdir)/../dcmjpeg
+dcmimgledir = $(top_srcdir)/../dcmimgle
+dcmjpeglibdir = -L$(dcmjpegdir)/libsrc -L$(dcmjpegdir)/libijg8 -L$(dcmjpegdir)/libijg12 \
+        -L$(dcmjpegdir)/libijg16
+dcmjpeglib = -ldcmjpeg -lijg8 -lijg12 -lijg16
 
-LOCALINCLUDES = -I$(ofstddir)/include -I$(dcmdatadir)/include -I$(dcmtlsdir)/include
+
+LOCALINCLUDES = -I$(ofstddir)/include -I$(dcmdatadir)/include -I$(dcmtlsdir)/include -I$(dcmjpegdir)/include -I$(dcmimgledir)/include
 LIBDIRS = -L$(top_srcdir)/libsrc -L$(ofstddir)/libsrc -L$(dcmdatadir)/libsrc \
-	-L$(dcmtlsdir)/libsrc
-LOCALLIBS = -ldcmnet -ldcmdata -lofstd $(ZLIBLIBS) $(TCPWRAPPERLIBS) $(JASPERLIBS)
+	-L$(dcmtlsdir)/libsrc $(dcmjpeglibdir) -L$(dcmimgledir)/libsrc
+LOCALLIBS = -ldcmnet -ldcmdata -lofstd $(dcmjpeglib) -ldcmimgle $(ZLIBLIBS) $(TCPWRAPPERLIBS) $(JASPERLIBS)
 DCMTLSLIBS = -ldcmtls
 
 objs = echoscu.o storescu.o storescp.o findscu.o movescu.o termscu.o
